@@ -7,8 +7,6 @@ import (
 	"log"
 	"os"
 
-	"github.com/HFO4/gbc-in-cloud/driver"
-	"github.com/HFO4/gbc-in-cloud/gb"
 	"github.com/HFO4/gbc-in-cloud/static"
 	"github.com/HFO4/gbc-in-cloud/stream"
 )
@@ -37,24 +35,6 @@ func init() {
 	flag.IntVar(&ListenPort, "p", 1989, "Set the `port` for the cloud-gaming server")
 	flag.StringVar(&ConfigPath, "c", "", "Set the game option list `config` file path")
 	flag.StringVar(&ROMPath, "r", "", "Set `ROM` file path")
-}
-
-func startGUI(screen driver.DisplayDriver, control driver.ControllerDriver) {
-	core := new(gb.Core)
-	core.FPS = FPS
-	core.Clock = 4194304
-	core.Debug = Debug
-	core.DisplayDriver = screen
-	core.Controller = control
-	core.DrawSignal = make(chan bool)
-	core.SpeedMultiple = 0
-	core.ToggleSound = SoundOn
-	core.Init(ROMPath)
-
-	go core.Run()
-	screen.Run(core.DrawSignal, func() {
-		core.SaveRAM()
-	})
 }
 
 func runStaticServer() {
