@@ -1,5 +1,3 @@
-//go:build gui
-
 package main
 
 import (
@@ -10,7 +8,6 @@ import (
 	"os"
 
 	"github.com/HFO4/gbc-in-cloud/driver"
-	"github.com/HFO4/gbc-in-cloud/fyne"
 	"github.com/HFO4/gbc-in-cloud/gb"
 	"github.com/HFO4/gbc-in-cloud/static"
 	"github.com/HFO4/gbc-in-cloud/stream"
@@ -34,16 +31,12 @@ var (
 
 func init() {
 	flag.BoolVar(&h, "h", false, "This help")
-	flag.BoolVar(&GUIMode, "g", true, "Play specific game in GUI mode")
-	flag.BoolVar(&FyneMode, "G", false, "Play specific game in Fyne GUI mode")
 	flag.BoolVar(&StreamServerMode, "s", false, "Start a cloud-gaming server")
 	flag.BoolVar(&StaticServerMode, "S", false, "Start a static image cloud-gaming server")
-	flag.BoolVar(&SoundOn, "m", true, "Turn on sound in GUI mode")
 	flag.BoolVar(&Debug, "d", false, "Use Debugger in GUI mode")
 	flag.IntVar(&ListenPort, "p", 1989, "Set the `port` for the cloud-gaming server")
-	flag.IntVar(&FPS, "f", 60, "Set the `FPS` in GUI mode")
 	flag.StringVar(&ConfigPath, "c", "", "Set the game option list `config` file path")
-	flag.StringVar(&ROMPath, "r", "", "Set `ROM` file path to be played in GUI mode")
+	flag.StringVar(&ROMPath, "r", "", "Set `ROM` file path")
 }
 
 func startGUI(screen driver.DisplayDriver, control driver.ControllerDriver) {
@@ -117,16 +110,6 @@ func main() {
 
 	if StaticServerMode {
 		runStaticServer()
-		return
-	}
-
-	if FyneMode {
-		driver := new(fyne.LCD)
-		startGUI(driver, driver)
-		return
-	} else if GUIMode {
-		driver := new(driver.LCD)
-		startGUI(driver, driver)
 		return
 	}
 }

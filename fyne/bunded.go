@@ -1,3 +1,5 @@
+//go:build gui
+
 package fyne
 
 import "fyne.io/fyne"
