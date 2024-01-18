@@ -22,7 +22,12 @@ You can directly download the executable file from the [Release](https://github.
 ```
 git clone https://github.com/HFO4/gameboy.live.git
 cd gameboy.live
+
+#To build without GUI
 go build -o gbdotlive main.go
+
+#To build with GUI
+go build --tags=gui -o gbdotlive main.go
 ```
 
 ## Usage
