@@ -18,3 +18,6 @@
 main
 *.sum
 gamelist.json
+.gitignore
+.vscode/
+gbdotlive
