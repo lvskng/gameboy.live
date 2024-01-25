@@ -26,11 +26,6 @@ type StaticServer struct {
 	upgrader websocket.Upgrader
 }
 
-type compressedBitmapStreamMessage struct {
-	Type string
-	Data [][]byte
-}
-
 // Run Running the static-image gaming server
 func (server *StaticServer) Run() {
 	// startup the emulator
@@ -119,6 +114,7 @@ func streamCompressedDifImages(server *StaticServer) func(http.ResponseWriter, *
 				}
 				msg = append(msg, line...)
 			}
+			//validate screen for debug purposes
 			// _, orbitmap := server.driver.GetBitmap()
 			// if !validateDif(msg, lastBitmap, orbitmap) {
 			// 	log.Printf("cannot validate dif image")
@@ -130,15 +126,6 @@ func streamCompressedDifImages(server *StaticServer) func(http.ResponseWriter, *
 				log.Println("write error:", err)
 				break
 			}
-			// jsonobj := &compressedBitmapStreamMessage{Type: connType, Data: bitmap}
-			// if err != nil {
-			// 	log.Printf("error marshalling message: %s", err)
-			// }
-			// err = c.WriteJSON(jsonobj)
-			// if err != nil {
-			// 	log.Println("write error:", err)
-			// 	break
-			// }
 			tick++
 			//time.Sleep(16 * time.Millisecond)
 		}
@@ -146,6 +133,7 @@ func streamCompressedDifImages(server *StaticServer) func(http.ResponseWriter, *
 	}
 }
 
+// validates a delta screen for debug purposes
 func validateDif(difbmp []byte, lastBitmap, orbitmap [160][144]byte) bool {
 	shift := func(slc []byte) (byte, []byte) {
 		if len(slc) == 1 {

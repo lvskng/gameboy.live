@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <html>
 
 <head>
@@ -12,11 +12,12 @@
   <div id="app">
     <div id="emulator">
       <!-- <img :src="imageURL" id="emulatorScreen"> -->
+      <canvas id="bufferCanvas" style="display: none" height="144" width="160"></canvas>
       <canvas id="emulatorScreen"></canvas>
       <div id="onScreenControls">
         <svg xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg"
           viewBox="0 0 20.025 19.866000000000003" version="1.1" xml:space="preserve" id="dpad" class="onScreenInput"
-          @pointerdown="handleDpadTouchStart" @pointermove="handleDpadTouchMove" @pointerup="handleDpadTouchEnd">
+          @pointerdown="handleDpadTouchStart" @pointermove="handleDpadTouchMove" @pointerup="handleDpadTouchEnd" @pointercancel="handleDpadTouchEnd">
           <defs>
             <linearGradient id="SVGID_1_" x1="0.5" x2="0.5" y1="1" y2="0">
               <stop offset="0.3" stop-color="#1E1E1E" />
@@ -74,10 +75,6 @@
                 <path class="dpad_btn"
                   d="m13.35,5.48l-3.34,2.97l-3.33,-2.97l0,-4.44c0,-0.62 0.5,-1.12 1.11,-1.12l4.44,0c0.62,0 1.12,0.5 1.12,1.11l0,4.45z"
                   fill="url(#SVGID_1_)" id="dpad_up" />
-                <!-- <path class="dpad_btn"
-                d="m13.35,5.48l-3.34,2.97l-3.33,-2.97l0,-4.44c0,-0.62 0.5,-1.12 1.11,-1.12l4.44,0c0.62,0 1.12,0.5 1.12,1.11l0,4.45z"
-                fill="url(#SVGID_1_)" id="dpad_up" @pointerdown="currentBtnPress = 'UP'"
-                @pointerup="currentBtnPress = ''" /> -->
                 <path
                   d="m12.23,0.57c0.26,0 0.47,0.21 0.47,0.46l0,4.16l-2.69,2.39l-2.68,-2.39l0,-4.15c0,-0.26 0.21,-0.47 0.46,-0.47l4.44,0m0,-0.65l-4.44,0c-0.61,0 -1.11,0.5 -1.11,1.11l0,4.45l3.33,2.97l3.34,-2.97l0,-4.44c0,-0.62 -0.5,-1.12 -1.12,-1.12l0,0z"
                   fill="url(#SVGID_2_)" id="svg_4" />
@@ -86,30 +83,22 @@
                 <path class="dpad_btn"
                   d="m6.68,14.31l3.33,-2.98l3.34,2.98l0,4.44c0,0.62 -0.5,1.12 -1.12,1.12l-4.44,0c-0.61,0 -1.11,-0.5 -1.11,-1.12l0,-4.44z"
                   fill="url(#SVGID_3_)" id="dpad_down" />
-                <!-- <path class="dpad_btn"
-                d="m6.68,14.31l3.33,-2.98l3.34,2.98l0,4.44c0,0.62 -0.5,1.12 -1.12,1.12l-4.44,0c-0.61,0 -1.11,-0.5 -1.11,-1.12l0,-4.44z"
-                fill="url(#SVGID_3_)" id="dpad_down" @pointerdown="currentBtnPress = 'DOWN'"
-                @pointerup="currentBtnPress = ''" /> -->
                 <path
                   d="m10.01,12.21l2.69,2.39l0,4.15c0,0.26 -0.21,0.47 -0.47,0.47l-4.44,0c-0.25,0 -0.46,-0.21 -0.46,-0.47l0,-4.15l2.68,-2.39m0,-0.87l-3.33,2.97l0,4.44c0,0.62 0.5,1.12 1.11,1.12l4.44,0c0.62,0 1.12,-0.5 1.12,-1.12l0,-4.44l-3.34,-2.97l0,0z"
                   fill="url(#SVGID_4_)" id="svg_7" />
               </g>
-              <g class="dpad_btn" id="dpad_right">
-                <!-- <g class="dpad_btn" id="dpad_right" @pointerdown="currentBtnPress = 'RIGHT'"
-              @pointerup="currentBtnPress = ''"> -->
-                <path
+              <g>
+                <path class="dpad_btn"
                   d="m14.47,13.27l-2.98,-3.34l2.98,-3.33l4.44,0c0.62,0 1.11,0.5 1.11,1.11l0,4.44c0,0.62 -0.5,1.12 -1.11,1.12l-4.44,0z"
-                  fill="url(#SVGID_5_)" id="svg_9" />
+                  fill="url(#SVGID_5_)" id="dpad_right" />
                 <path
                   d="m18.91,7.25c0.26,0 0.47,0.21 0.47,0.46l0,4.44c0,0.26 -0.21,0.47 -0.47,0.47l-4.15,0l-2.39,-2.69l2.39,-2.68l4.15,0m0,-0.65l-4.44,0l-2.98,3.33l2.98,3.34l4.44,0c0.61,0 1.11,-0.5 1.11,-1.12l0,-4.44c0,-0.61 -0.49,-1.11 -1.11,-1.11l0,0z"
                   fill="url(#SVGID_6_)" id="svg_10" />
               </g>
-              <g class="dpad_btn" id="dpad_left">
-                <!-- <g class="dpad_btn" id="dpad_left" @pointerdown="currentBtnPress = 'LEFT'"
-              @pointerup="currentBtnPress = ''"> -->
-                <path
+              <g>
+                <path class="dpad_btn"
                   d="m5.56,6.6l2.97,3.33l-2.97,3.34l-4.44,0c-0.62,0 -1.12,-0.5 -1.12,-1.12l0,-4.44c0,-0.61 0.5,-1.11 1.11,-1.11l4.45,0z"
-                  fill="url(#SVGID_7_)" id="svg_12" />
+                  fill="url(#SVGID_7_)" id="dpad_left" />
                 <path
                   d="m5.27,7.25l2.39,2.68l-2.39,2.69l-4.15,0c-0.26,0 -0.47,-0.21 -0.47,-0.47l0,-4.44c0,-0.25 0.21,-0.46 0.47,-0.46l4.15,0m0.29,-0.65l-4.44,0c-0.62,0 -1.12,0.5 -1.12,1.11l0,4.44c0,0.62 0.5,1.12 1.11,1.12l4.45,0l2.97,-3.34l-2.97,-3.33l0,0z"
                   fill="url(#SVGID_8_)" id="svg_13" />
@@ -117,13 +106,13 @@
             </g>
           </g>
         </svg>
-        <img src="btn_start.svg" @pointerdown="currentBtnPress = 'START'" @pointerup="currentBtnPress = ''"
+        <img src="btn_start.svg" id="btn-start" @pointerdown="handleButtonTouchBegin" @pointerup="handleButtonTouchEnd" @pointercancel="handleButtonTouchEnd"
           class="onScreenInput btn-start" />
-        <img src="btn_select.svg" @pointerdown="currentBtnPress = 'SELECT'" @pointerup="currentBtnPress = ''"
+        <img src="btn_select.svg" id="btn-select" @pointerdown="handleButtonTouchBegin" @pointerup="handleButtonTouchEnd" @pointercancel="handleButtonTouchEnd"
           class="onScreenInput btn-select" />
-        <img src="btn_a.svg" @pointerdown="currentBtnPress = 'A'" @pointerup="currentBtnPress = ''"
+        <img src="btn_a.svg" id="btn-a" @pointerdown="handleButtonTouchBegin" @pointerup="handleButtonTouchEnd" @pointercancel="handleButtonTouchEnd"
           class="onScreenInput btn-a" />
-        <img src="btn_b.svg" @pointerdown="currentBtnPress = 'B'" @pointerup="currentBtnPress = ''"
+        <img src="btn_b.svg" id="btn-b" @pointerdown="handleButtonTouchBegin" @pointerup="handleButtonTouchEnd" @pointercancel="handleButtonTouchEnd"
           class="onScreenInput btn-b" />
       </div>
     </div>
@@ -137,9 +126,9 @@
       return {
         wsConn: new WebSocket("ws://localhost:1989/cstream"),
         input: "",
-        imageURL: null,
         currentBtnPress: '',
         lastButtonPress: '',
+        dpadPointerDown: false,
         buttonPressCount: 0,
         emulatorScreen: [],
         keys: {
@@ -161,60 +150,39 @@
       }
     },
     methods: {
-      buttonUp() {
-        this.wsConn.send(this.keys.UP)
-      },
-      buttonDown() {
-        this.wsConn.send(this.keys.DOWN)
-      },
-      buttonLeft() {
-        this.wsConn.send(this.keys.LEFT)
-      },
-      buttonRight() {
-        this.wsConn.send(this.keys.RIGHT)
-      },
-      buttonA() {
-        this.wsConn.send(this.keys.A)
-      },
-      buttonB() {
-        this.wsConn.send(this.keys.B)
-      },
-      buttonStart() {
-        this.wsConn.send(this.keys.START)
-      },
-      buttonSelect() {
-        this.wsConn.send(this.keys.SELECT)
-      },
       handleKey(event) {
         switch (event.code) {
           case "ArrowRight":
-            this.buttonRight();
+            this.currentBtnPress = "RIGHT"
             break;
           case "ArrowLeft":
-            this.buttonLeft();
+          this.currentBtnPress = "LEFT"
             break;
           case "ArrowUp":
-            this.buttonUp();
+            this.currentBtnPress = "UP"
             break;
           case "ArrowDown":
-            this.buttonDown();
+            this.currentBtnPress = "DOWN"
             break;
           case "KeyZ":
-            this.buttonA();
+            this.currentBtnPress = "A"
             break;
           case "KeyX":
-            this.buttonB();
+            this.currentBtnPress = "B"
             break;
           case "Space":
-            this.buttonStart();
+            this.currentBtnPress = "START"
             break;
           case "ShiftLeft":
           case "ShiftRight":
-            this.buttonSelect();
+            this.currentBtnPress = "SELECT"
             break;
         }
       },
-      handleSvgPress() {
+      releaseKey() {
+        this.currentBtnPress = ""
+      },
+      sendButton() {
         if (this.currentBtnPress != '') {
           if (this.currentBtnPress == this.lastButtonPress) {
             this.buttonPressCount++;
@@ -231,76 +199,103 @@
       },
       handleDpadTouchStart(event) {
         event.preventDefault();
-
+        let elem = document.elementFromPoint(event.clientX, event.clientY)
+        if (!elem) {
+          this.currentBtnPress = ''
+        }
+        this.dpadPointerDown = true
+        let id = elem.id
+        if (![...elem.classList].includes("dpad_btn")) return
+        let dir = this.getDpadButtonFromId(id)
+        if (dir != undefined) {
+          this.currentBtnPress = dir
+        }
       },
       handleDpadTouchMove(event) {
-
+        event.preventDefault()
+        if (!this.dpadPointerDown) {
+          this.currentBtnPress = ''
+          return
+        }
+        event.preventDefault();
+        let elem = document.elementFromPoint(event.clientX, event.clientY)
+        if (!elem) {
+          this.currentBtnPress = ''
+        }
+        let id = elem.id
+        if (![...elem.classList].includes("dpad_btn")) return
+        let dir = this.getDpadButtonFromId(id)
+        if (dir != undefined) {
+          this.currentBtnPress = dir
+        }
       },
       handleDpadTouchEnd(event) {
-
+        event.preventDefault()
+        this.currentBtnPress = ''
+        this.dpadPointerDown = false
+      },
+      getDpadButtonFromId(id) {
+        switch (id) {
+          case "dpad_up":
+            return "UP"
+          case "dpad_down":
+            return "DOWN"
+          case "dpad_left":
+            return "LEFT"
+          case "dpad_right":
+            return "RIGHT"
+        }
+      },
+      handleButtonTouchBegin(event) {
+        event.preventDefault();
+        let elem = document.elementFromPoint(event.clientX, event.clientY)
+        let id = elem.id
+        this.currentBtnPress = id.replace("btn-", '').toUpperCase()
+      },
+      handleButtonTouchEnd(event) {
+        event.preventDefault()
+        this.currentBtnPress = ''
       }
     },
     created() {
 
     },
     mounted() {
+      const drawingCanvas = document.getElementById("bufferCanvas")
       const canvas = document.getElementById("emulatorScreen")
       const ctx = canvas.getContext("2d")
+      const drawingCtx = drawingCanvas.getContext("2d")
 
       const originalWidth = 160
       const originalHeight = 144
+      drawingCanvas.style.width = `${originalWidth}px`;
+      drawingCanvas.style.height = `${originalHeight}px`;
 
-      let scale = window.devicePixelRatio || 1;
-      canvas.width = originalWidth * scale;
-      canvas.height = originalHeight * scale;
-
-      canvas.style.width = `${originalWidth}px`;
-      canvas.style.height = `${originalHeight}px`;
-
-      ctx.scale(scale, scale);
-
-      window.addEventListener("resize", () => {
+      let resize = () => {
         let scale = window.devicePixelRatio || 1;
         canvas.width = originalWidth * scale;
         canvas.height = originalHeight * scale;
 
-        canvas.style.width = `${originalWidth}px`;
-        canvas.style.height = `${originalHeight}px`;
-
         ctx.scale(scale, scale);
-      })
-
-      let screen = []
-
-      for (let i = 0; i < 160; i++) {
-        let line = []
-        for (let x = 0; x < 144; x++) {
-          line.push([0, 0, 0, 0])
-        }
-        screen.push(line)
       }
 
-      // window.setInterval(() => {
-      //   ctx.clearRect(0, 0, canvas.width, canvas.height)
-      //   for (let x = 0; x < 160; x++) {
-      //     for (let y = 0; y < 144; y++) {
-      //       let color = screen[x][y]
-      //       const newColor = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${color[3]})`
-      //       ctx.fillStyle = newColor
-      //       ctx.fillRect(x, y, 1, 1)
-      //     }
-      //   }
-      // }, 16)
+      window.addEventListener("resize", resize)
+      resize()
+
+      window.setInterval(() => {
+        ctx.drawImage(drawingCanvas, 0, 0, canvas.width, canvas.height)
+      }, 33)
 
       let drawPixel = (x, y, color) => {
         const newColor = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${color[3]})`
-        ctx.fillStyle = newColor
-        ctx.fillRect(x, y, 1, 1)
+        drawingCtx.fillStyle = newColor
+        drawingCtx.fillRect(x, y, 1, 1)
       }
 
       this.wsConn.onmessage = (event) => {
         event.data.arrayBuffer().then(buf => {
           let data = new Uint8Array(buf)
+          let dataIndex = 0
           let shiftData = () => {
             let r = data[0]
             data = data.subarray(1)
@@ -308,7 +303,7 @@
           }
           const difMode = shiftData() == 0xFB
           if (!difMode) {
-            ctx.clearRect(0, 0, canvas.width, canvas.height)
+            drawingCtx.clearRect(0, 0, canvas.width, canvas.height)
           }
           let x = 0
           let y = 0
@@ -366,18 +361,12 @@
               continue
             }
           }
-
-          // else {
-          //   while (data.length > 0) {
-          //     const op = shiftData()
-          //     if (op )
-          //   }
-          // }
         })
       }
 
       window.addEventListener("keydown", (event) => this.handleKey(event))
-      window.setInterval(this.handleSvgPress.bind(this), 100)
+      window.addEventListener("keyup", this.releaseKey.bind(this))
+      window.setInterval(this.sendButton.bind(this), 100)
     }
   }).$mount('#app')
 </script>
@@ -402,8 +391,9 @@
 
   #emulatorScreen {
     display: block;
-    width: 100vw;
+    width: 100%;
     height: auto;
+    margin: 0;
     image-rendering: pixelated;
   }
 
@@ -425,6 +415,8 @@
     align-items: center;
     width: 100%;
     gap: 10px;
+    margin-top : 1em;
+    touch-action: none;
   }
 
   .btn-a,
@@ -461,10 +453,14 @@
   body,
   html {
     margin: 0;
+    background-color: black;
     height: 100vh;
     overflow: hidden;
     /* Prevent scrolling */
-    touch-action: manipulation;
+    touch-action: none;
     /* Disable zooming and long press events */
+    display: flex;
+    justify-content: center;
+    align-items: center;
   }
 </style>
