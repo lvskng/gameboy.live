@@ -89,7 +89,7 @@ func streamCompressedDifImages(server *StaticServer) func(http.ResponseWriter, *
 		var lastBitmap [160][144]byte
 		for {
 			var connType byte
-			if tick%2000 == 0 {
+			if tick%1000 == 0 {
 				bitmap, lastBitmap = server.driver.GetBitmap()
 				connType = 0xFA
 			} else {
