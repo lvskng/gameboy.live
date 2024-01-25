@@ -4,8 +4,8 @@
 
 <head>
   <title>Gameboy.live websocket demo</title>
-  <!-- <script src="https://cdn.jsdelivr.net/npm/vue@2.6.12/dist/vue.min.js"></script> -->
-  <script src="https://cdn.jsdelivr.net/npm/vue@2.6.12/dist/vue.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vue@2.6.12/dist/vue.min.js"></script>
+  <!-- <script src="https://cdn.jsdelivr.net/npm/vue@2.6.12/dist/vue.js"></script> -->
 </head>
 
 <body scroll="no">
@@ -374,16 +374,6 @@
 
 </html>
 <style>
-  body {
-    -webkit-user-select: none;
-    /* Safari */
-    -ms-user-select: none;
-    /* IE 10 and IE 11 */
-    user-select: none;
-    /* Standard syntax */
-    touch-action: manipulation
-  }
-
   #emulator {
     height: 100vh;
     display: inline-block;
@@ -396,12 +386,6 @@
     margin: 0;
     image-rendering: pixelated;
   }
-
-  /* .onScreenInput {
-  display: inline-block; 
-  width: 15%; 
-  height: auto; 
-} */
 
   #onScreenControls {
     display: grid;
@@ -454,6 +438,11 @@
   html {
     margin: 0;
     background-color: black;
+    -webkit-user-select: none;
+    /* Safari */
+    -ms-user-select: none;
+    /* IE 10 and IE 11 */
+    user-select: none;
     height: 100vh;
     overflow: hidden;
     /* Prevent scrolling */
@@ -464,3 +453,4 @@
     align-items: center;
   }
 </style>
+</html>
