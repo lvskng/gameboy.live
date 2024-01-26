@@ -17,7 +17,8 @@
       <div id="onScreenControls">
         <svg xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg"
           viewBox="0 0 20.025 19.866000000000003" version="1.1" xml:space="preserve" id="dpad" class="onScreenInput"
-          @pointerdown="handleDpadTouchStart" @pointermove="handleDpadTouchMove" @pointerup="handleDpadTouchEnd" @pointercancel="handleDpadTouchEnd">
+          @pointerdown="handleDpadTouchStart" @pointermove="handleDpadTouchMove" @pointerup="handleDpadTouchEnd"
+          @pointercancel="handleDpadTouchEnd">
           <defs>
             <linearGradient id="SVGID_1_" x1="0.5" x2="0.5" y1="1" y2="0">
               <stop offset="0.3" stop-color="#1E1E1E" />
@@ -106,14 +107,14 @@
             </g>
           </g>
         </svg>
-        <img src="btn_start.svg" id="btn-start" @pointerdown="handleButtonTouchBegin" @pointerup="handleButtonTouchEnd" @pointercancel="handleButtonTouchEnd"
-          class="onScreenInput btn-start" />
-        <img src="btn_select.svg" id="btn-select" @pointerdown="handleButtonTouchBegin" @pointerup="handleButtonTouchEnd" @pointercancel="handleButtonTouchEnd"
-          class="onScreenInput btn-select" />
-        <img src="btn_a.svg" id="btn-a" @pointerdown="handleButtonTouchBegin" @pointerup="handleButtonTouchEnd" @pointercancel="handleButtonTouchEnd"
-          class="onScreenInput btn-a" />
-        <img src="btn_b.svg" id="btn-b" @pointerdown="handleButtonTouchBegin" @pointerup="handleButtonTouchEnd" @pointercancel="handleButtonTouchEnd"
-          class="onScreenInput btn-b" />
+        <img src="btn_start.svg" id="btn-start" @pointerdown="handleButtonTouchBegin" @pointerup="handleButtonTouchEnd"
+          @pointercancel="handleButtonTouchEnd" class="onScreenInput btn-start" />
+        <img src="btn_select.svg" id="btn-select" @pointerdown="handleButtonTouchBegin"
+          @pointerup="handleButtonTouchEnd" @pointercancel="handleButtonTouchEnd" class="onScreenInput btn-select" />
+        <img src="btn_a.svg" id="btn-a" @pointerdown="handleButtonTouchBegin" @pointerup="handleButtonTouchEnd"
+          @pointercancel="handleButtonTouchEnd" class="onScreenInput btn-a" />
+        <img src="btn_b.svg" id="btn-b" @pointerdown="handleButtonTouchBegin" @pointerup="handleButtonTouchEnd"
+          @pointercancel="handleButtonTouchEnd" class="onScreenInput btn-b" />
       </div>
     </div>
   </div>
@@ -141,12 +142,7 @@
           START: 7,
           SELECT: 6,
         },
-        colors: {
-          0x00: [0x9b, 0xbc, 0x0f, 0xff],
-          0x01: [0x8b, 0xac, 0x0f, 0xff],
-          0x02: [0x30, 0x62, 0x30, 0xff],
-          0x03: [0x0f, 0x38, 0x0f, 0xff]
-        }
+        colors: [[0x9b, 0xbc, 0x0f, 0xff], [0x8b, 0xac, 0x0f, 0xff], [0x30, 0x62, 0x30, 0xff], [0x0f, 0x38, 0x0f, 0xff]]
       }
     },
     methods: {
@@ -156,7 +152,7 @@
             this.currentBtnPress = "RIGHT"
             break;
           case "ArrowLeft":
-          this.currentBtnPress = "LEFT"
+            this.currentBtnPress = "LEFT"
             break;
           case "ArrowUp":
             this.currentBtnPress = "UP"
@@ -268,14 +264,11 @@
 
       const originalWidth = 160
       const originalHeight = 144
-      drawingCanvas.style.width = `${originalWidth}px`;
-      drawingCanvas.style.height = `${originalHeight}px`;
+      drawingCanvas.width = originalWidth
+      drawingCanvas.height = originalHeight
 
       let resize = () => {
         let scale = window.devicePixelRatio || 1;
-        canvas.width = originalWidth * scale;
-        canvas.height = originalHeight * scale;
-
         ctx.scale(scale, scale);
       }
 
@@ -367,12 +360,13 @@
       window.addEventListener("keydown", (event) => this.handleKey(event))
       window.addEventListener("keyup", this.releaseKey.bind(this))
       window.setInterval(this.sendButton.bind(this), 100)
+      canvas.width = originalWidth;
+      canvas.height = originalHeight;
     }
   }).$mount('#app')
 </script>
 </body>
 
-</html>
 <style>
   #emulator {
     height: 100vh;
@@ -385,6 +379,7 @@
     height: auto;
     margin: 0;
     image-rendering: pixelated;
+    aspect-ratio: 160/144;
   }
 
   #onScreenControls {
@@ -399,7 +394,7 @@
     align-items: center;
     width: 100%;
     gap: 10px;
-    margin-top : 1em;
+    margin-top: 1em;
     touch-action: none;
   }
 
@@ -442,15 +437,22 @@
     /* Safari */
     -ms-user-select: none;
     /* IE 10 and IE 11 */
-    user-select: none;
     height: 100vh;
     overflow: hidden;
     /* Prevent scrolling */
-    touch-action: none;
+    touch-action: manipulation;
     /* Disable zooming and long press events */
     display: flex;
     justify-content: center;
     align-items: center;
+    touch-action: none;
+    -webkit-touch-callout: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    user-select: none;
+    outline: none;
+    overflow: hidden;
   }
 </style>
+
 </html>
