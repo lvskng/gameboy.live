@@ -7,8 +7,10 @@ import (
 	"log"
 	"os"
 
+	"github.com/HFO4/gbc-in-cloud/live"
 	"github.com/HFO4/gbc-in-cloud/static"
 	"github.com/HFO4/gbc-in-cloud/stream"
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -18,6 +20,7 @@ var (
 	FyneMode         bool
 	StreamServerMode bool
 	StaticServerMode bool
+	LiveMode         bool
 
 	ConfigPath string
 	ListenPort int
@@ -27,11 +30,24 @@ var (
 	Debug      bool
 )
 
+type LiveServerConfig struct {
+	Server struct {
+		Live struct {
+			Port                int    `yaml:"port"`
+			Url                 string `yaml:"url"`
+			FullPictureInterval int    `yaml:"full_picture_interval"`
+			Debug               bool   `yaml:"debug"`
+			VueVersion          string `yaml:"vue_version"`
+		} `yaml:"live"`
+	} `yaml:"server"`
+}
+
 func init() {
 	flag.BoolVar(&h, "h", false, "This help")
 	flag.BoolVar(&StreamServerMode, "s", false, "Start a cloud-gaming server")
 	flag.BoolVar(&StaticServerMode, "S", false, "Start a static image cloud-gaming server")
 	flag.BoolVar(&Debug, "d", false, "Use Debugger in GUI mode")
+	flag.BoolVar(&LiveMode, "l", false, "Start a WebRTC Live Server")
 	flag.IntVar(&ListenPort, "p", 1989, "Set the `port` for the cloud-gaming server")
 	flag.StringVar(&ConfigPath, "c", "", "Set the game option list `config` file path")
 	flag.StringVar(&ROMPath, "r", "", "Set `ROM` file path")
@@ -90,6 +106,23 @@ func main() {
 
 	if StaticServerMode {
 		runStaticServer()
+		return
+	}
+
+	if LiveMode {
+		f, err := os.Open("config.yaml")
+		if err != nil {
+			panic(err)
+		}
+		defer f.Close()
+		var cfg LiveServerConfig
+		decoder := yaml.NewDecoder(f)
+		err = decoder.Decode(&cfg)
+		if err != nil {
+			panic(err)
+		}
+		s := &live.LiveServer{Port: cfg.Server.Live.Port, GamePath: ROMPath, Debug: cfg.Server.Live.Debug, FullPictureInterval: cfg.Server.Live.FullPictureInterval, Url: cfg.Server.Live.Url, VueVersion: cfg.Server.Live.VueVersion}
+		s.InitServer()
 		return
 	}
 }

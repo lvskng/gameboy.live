@@ -1,0 +1,7 @@
+server:
+  live:
+    port: 1989
+    url: "localhost:1989"
+    full_picture_interval: 3 #in seconds
+    debug: true
+    vue_version: "2.6.12"

@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<html>
+
+<head>
+  <title>{{.GameName}}</title>
+  <script src="https://cdn.jsdelivr.net/npm/vue@{{.VueVersion}}/dist/vue.{{.DebugMin}}js"></script>
+</head>
+
+<body scroll="no">
+  <div id="app">
+    <div id="emulator">
+      <canvas id="bufferCanvas" style="display: none" height="144" width="160"></canvas>
+      <canvas id="emulatorScreen"></canvas>
+      <div id="onScreenControls">
+        <svg xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg"
+          viewBox="0 0 20.025 19.866000000000003" version="1.1" xml:space="preserve" id="dpad" class="onScreenInput"
+          @pointerdown="handleDpadTouchStart" @pointermove="handleDpadTouchMove" @pointerup="handleDpadTouchEnd"
+          @pointercancel="handleDpadTouchEnd">
+          <defs>
+            <linearGradient id="SVGID_1_" x1="0.5" x2="0.5" y1="1" y2="0">
+              <stop offset="0.3" stop-color="#1E1E1E" />
+              <stop offset="1" stop-color="#5B5B5F" />
+            </linearGradient>
+            <linearGradient id="SVGID_2_" x1="0.5" x2="0.5" y1="1" y2="0">
+              <stop offset="0" stop-color="#141414" />
+              <stop offset="0.23" stop-color="#181818" />
+              <stop offset="0.46" stop-color="#242425" />
+              <stop offset="0.7" stop-color="#373739" />
+              <stop offset="0.94" stop-color="#535356" />
+              <stop offset="1" stop-color="#5B5B5F" />
+            </linearGradient>
+            <linearGradient id="SVGID_3_" x1="0.5" x2="0.5" y1="1" y2="0">
+              <stop offset="0.3" stop-color="#1E1E1E" />
+              <stop offset="1" stop-color="#5B5B5F" />
+            </linearGradient>
+            <linearGradient id="SVGID_4_" x1="0.5" x2="0.5" y1="1" y2="0">
+              <stop offset="0" stop-color="#141414" />
+              <stop offset="0.23" stop-color="#181818" />
+              <stop offset="0.46" stop-color="#242425" />
+              <stop offset="0.7" stop-color="#373739" />
+              <stop offset="0.94" stop-color="#535356" />
+              <stop offset="1" stop-color="#5B5B5F" />
+            </linearGradient>
+            <linearGradient id="SVGID_5_" x1="0.5" x2="0.5" y1="1" y2="0">
+              <stop offset="0.3" stop-color="#1E1E1E" />
+              <stop offset="1" stop-color="#5B5B5F" />
+            </linearGradient>
+            <linearGradient id="SVGID_6_" x1="0.5" x2="0.5" y1="1" y2="0">
+              <stop offset="0" stop-color="#141414" />
+              <stop offset="0.23" stop-color="#181818" />
+              <stop offset="0.47" stop-color="#242425" />
+              <stop offset="0.72" stop-color="#373739" />
+              <stop offset="0.96" stop-color="#525256" />
+              <stop offset="1" stop-color="#57575B" />
+            </linearGradient>
+            <linearGradient id="SVGID_7_" x1="0.5" x2="0.5" y1="1" y2="0">
+              <stop offset="0.3" stop-color="#1E1E1E" />
+              <stop offset="1" stop-color="#5B5B5F" />
+            </linearGradient>
+            <linearGradient id="SVGID_8_" x1="0.5" x2="0.5" y1="1" y2="0">
+              <stop offset="0" stop-color="#141414" />
+              <stop offset="0.23" stop-color="#181818" />
+              <stop offset="0.46" stop-color="#242425" />
+              <stop offset="0.7" stop-color="#373739" />
+              <stop offset="0.94" stop-color="#535356" />
+              <stop offset="1" stop-color="#5B5B5F" />
+            </linearGradient>
+          </defs>
+          <g class="layer">
+            <title>D-Pad</title>
+            <g id="svg_1">
+              <g id="svg_2">
+                <path class="dpad_btn"
+                  d="m13.35,5.48l-3.34,2.97l-3.33,-2.97l0,-4.44c0,-0.62 0.5,-1.12 1.11,-1.12l4.44,0c0.62,0 1.12,0.5 1.12,1.11l0,4.45z"
+                  fill="url(#SVGID_1_)" id="dpad_up" />
+                <path
+                  d="m12.23,0.57c0.26,0 0.47,0.21 0.47,0.46l0,4.16l-2.69,2.39l-2.68,-2.39l0,-4.15c0,-0.26 0.21,-0.47 0.46,-0.47l4.44,0m0,-0.65l-4.44,0c-0.61,0 -1.11,0.5 -1.11,1.11l0,4.45l3.33,2.97l3.34,-2.97l0,-4.44c0,-0.62 -0.5,-1.12 -1.12,-1.12l0,0z"
+                  fill="url(#SVGID_2_)" id="svg_4" />
+              </g>
+              <g id="svg_5">
+                <path class="dpad_btn"
+                  d="m6.68,14.31l3.33,-2.98l3.34,2.98l0,4.44c0,0.62 -0.5,1.12 -1.12,1.12l-4.44,0c-0.61,0 -1.11,-0.5 -1.11,-1.12l0,-4.44z"
+                  fill="url(#SVGID_3_)" id="dpad_down" />
+                <path
+                  d="m10.01,12.21l2.69,2.39l0,4.15c0,0.26 -0.21,0.47 -0.47,0.47l-4.44,0c-0.25,0 -0.46,-0.21 -0.46,-0.47l0,-4.15l2.68,-2.39m0,-0.87l-3.33,2.97l0,4.44c0,0.62 0.5,1.12 1.11,1.12l4.44,0c0.62,0 1.12,-0.5 1.12,-1.12l0,-4.44l-3.34,-2.97l0,0z"
+                  fill="url(#SVGID_4_)" id="svg_7" />
+              </g>
+              <g>
+                <path class="dpad_btn"
+                  d="m14.47,13.27l-2.98,-3.34l2.98,-3.33l4.44,0c0.62,0 1.11,0.5 1.11,1.11l0,4.44c0,0.62 -0.5,1.12 -1.11,1.12l-4.44,0z"
+                  fill="url(#SVGID_5_)" id="dpad_right" />
+                <path
+                  d="m18.91,7.25c0.26,0 0.47,0.21 0.47,0.46l0,4.44c0,0.26 -0.21,0.47 -0.47,0.47l-4.15,0l-2.39,-2.69l2.39,-2.68l4.15,0m0,-0.65l-4.44,0l-2.98,3.33l2.98,3.34l4.44,0c0.61,0 1.11,-0.5 1.11,-1.12l0,-4.44c0,-0.61 -0.49,-1.11 -1.11,-1.11l0,0z"
+                  fill="url(#SVGID_6_)" id="svg_10" />
+              </g>
+              <g>
+                <path class="dpad_btn"
+                  d="m5.56,6.6l2.97,3.33l-2.97,3.34l-4.44,0c-0.62,0 -1.12,-0.5 -1.12,-1.12l0,-4.44c0,-0.61 0.5,-1.11 1.11,-1.11l4.45,0z"
+                  fill="url(#SVGID_7_)" id="dpad_left" />
+                <path
+                  d="m5.27,7.25l2.39,2.68l-2.39,2.69l-4.15,0c-0.26,0 -0.47,-0.21 -0.47,-0.47l0,-4.44c0,-0.25 0.21,-0.46 0.47,-0.46l4.15,0m0.29,-0.65l-4.44,0c-0.62,0 -1.12,0.5 -1.12,1.11l0,4.44c0,0.62 0.5,1.12 1.11,1.12l4.45,0l2.97,-3.34l-2.97,-3.33l0,0z"
+                  fill="url(#SVGID_8_)" id="svg_13" />
+              </g>
+            </g>
+          </g>
+        </svg>
+        <img src="btn_start.svg" id="btn-start" @pointerdown="handleButtonTouchBegin" @pointerup="handleButtonTouchEnd"
+          @pointercancel="handleButtonTouchEnd" class="onScreenInput btn-start" />
+        <img src="btn_select.svg" id="btn-select" @pointerdown="handleButtonTouchBegin"
+          @pointerup="handleButtonTouchEnd" @pointercancel="handleButtonTouchEnd" class="onScreenInput btn-select" />
+        <img src="btn_a.svg" id="btn-a" @pointerdown="handleButtonTouchBegin" @pointerup="handleButtonTouchEnd"
+          @pointercancel="handleButtonTouchEnd" class="onScreenInput btn-a" />
+        <img src="btn_b.svg" id="btn-b" @pointerdown="handleButtonTouchBegin" @pointerup="handleButtonTouchEnd"
+          @pointercancel="handleButtonTouchEnd" class="onScreenInput btn-b" />
+      </div>
+    </div>
+  </div>
+</body>
+<script>
+
+  new Vue({
+    name: 'App',
+    data: () => {
+      return {
+        dpadPointerDown: false,
+        buttonPressCount: 0,
+        emulatorScreen: [],
+        webRTCid: null,
+        dataChannel: null,
+        keys: {
+          UP: 2,
+          DOWN: 3,
+          LEFT: 1,
+          RIGHT: 0,
+          A: 4,
+          B: 5,
+          START: 7,
+          SELECT: 6,
+        },
+        pressedKeys: {
+          0: false,
+          1: false,
+          2: false,
+          3: false,
+          4: false,
+          5: false,
+          6: false,
+          7: false
+        },
+        lastInput: 0,
+        lastDpadDown: 0,
+        colors: [[0x9b, 0xbc, 0x0f, 0xff], [0x8b, 0xac, 0x0f, 0xff], [0x30, 0x62, 0x30, 0xff], [0x0f, 0x38, 0x0f, 0xff]]
+      }
+    },
+    methods: {
+      handleDpadTouchStart(event) {
+        event.preventDefault();
+        let elem = document.elementFromPoint(event.clientX, event.clientY)
+        if (!elem) {
+          this.setDpad(4)
+        }
+        this.dpadPointerDown = true
+        let id = elem.id
+        if (![...elem.classList].includes("dpad_btn")) return
+        let dir = this.getDpadButtonFromId(id)
+        if (dir != undefined) {
+          this.setDpad(this.keys[dir])
+        }
+      },
+      handleDpadTouchMove(event) {
+        event.preventDefault()
+        let elem = document.elementFromPoint(event.clientX, event.clientY)
+        let id = elem.id
+        if (![...elem.classList].includes("dpad_btn")) return
+        let dir = this.getDpadButtonFromId(id)
+        if (!this.dpadPointerDown) {
+          this.setDpad(4)
+          return
+        }
+        if (!elem) {
+          this.setDpad(4)
+        }
+
+        if (dir != undefined) {
+          this.setDpad(this.keys[dir])
+        }
+      },
+      handleDpadTouchEnd(event) {
+        event.preventDefault()
+        this.dpadPointerDown = false
+        this.setDpad(4)
+      },
+      getDpadButtonFromId(id) {
+        switch (id) {
+          case "dpad_up":
+            return "UP"
+          case "dpad_down":
+            return "DOWN"
+          case "dpad_left":
+            return "LEFT"
+          case "dpad_right":
+            return "RIGHT"
+        }
+      },
+      handleButtonTouchBegin(event) {
+        event.preventDefault();
+        let elem = document.elementFromPoint(event.clientX, event.clientY)
+        let id = elem.id
+        this.currentBtnPress = id.replace("btn-", '').toUpperCase()
+        this.pressedKeys[this.keys[id.replace("btn-", '').toUpperCase()]] = true
+      },
+      handleButtonTouchEnd(event) {
+        event.preventDefault()
+        this.currentBtnPress = ''
+        let elem = document.elementFromPoint(event.clientX, event.clientY)
+        let id = elem.id
+        this.pressedKeys[this.keys[id.replace("btn-", '').toUpperCase()]] = false
+      },
+      setDpad(dir) {
+        for (const key of Object.keys(this.pressedKeys)) {
+          if (key < 4) {
+            if (key == dir) this.pressedKeys[key] = true
+            else this.pressedKeys[key] = false
+          }
+        }
+      }
+    },
+    created() {
+
+    },
+    mounted() {
+      const SERVER_URL = 'http://{{.ServerURL}}/offer';
+      const configuration = { 'iceServers': [{ 'urls': 'stun:stun.l.google.com:19302' }] };
+      let candidateQueue = [];
+      let sendCandidate = candidate => {
+        fetch('/candidate', {
+          method: 'POST',
+          body: JSON.stringify({ id: this.webRTCid, candidate: candidate }),
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      const peerConnection = new RTCPeerConnection(configuration);
+      peerConnection.createDataChannel("ice")
+      peerConnection.createOffer().then(offer => {
+        return peerConnection.setLocalDescription(offer);
+      }).then(() => {
+        // Wait for ICE gathering to complete
+        return new Promise(resolve => {
+          if (peerConnection.iceGatheringState === 'complete') {
+            resolve();
+          } else {
+            const checkState = () => {
+              if (peerConnection.iceGatheringState === 'complete') {
+                peerConnection.removeEventListener('icegatheringstatechange', checkState);
+                resolve();
+              }
+            };
+            peerConnection.addEventListener('icegatheringstatechange', checkState);
+          }
+        });
+      }).then(() => {
+        const offer = peerConnection.localDescription;
+        return fetch(SERVER_URL, {
+          method: 'POST',
+          body: JSON.stringify(offer),
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+      }).then(response => {
+        return response.json();
+      }).then(answer => {
+        this.webRTCid = answer.id;
+        candidateQueue.forEach(candidate => sendCandidate(candidate));
+        candidateQueue = [];
+        return peerConnection.setRemoteDescription(answer.session);
+      }).catch(console.error);
+
+      peerConnection.onicecandidate = event => {
+        if (event.candidate) {
+          if (this.webRTCid) {
+            sendCandidate(event.candidate);
+          } else {
+            candidateQueue.push(event.candidate);
+          }
+        }
+      };
+
+      peerConnection.ondatachannel = event => {
+        this.dataChannel = event.channel
+        this.dataChannel.onmessage = readData
+        let setBit = (byte, bit) => {
+          return byte | (1 << bit);
+        }
+        let clearBit = (byte, bit) => {
+          return byte & ~(1 << bit);
+        }
+        window.setInterval(() => {
+          let input = 0xFF
+          for (const [key, val] of Object.entries(this.pressedKeys)) {
+            if (val === true) {
+              if (key > 3 || this.dpadPointerDown) input = clearBit(input, key)
+            }
+          }
+          if (input != 0xFF || input != this.lastInput) {
+            let buf = new ArrayBuffer(1)
+            const v = new DataView(buf)
+            v.setUint8(0, input)
+            this.dataChannel.send(buf, true)
+          }
+          this.lastInput = input
+        }, 100)
+      }
+
+      peerConnection.onnegotiationneeded = e => {
+        pc.createOffer()
+          .then(offer => peerConnection.setLocalDescription(offer))
+          .catch(console.error);
+      };
+
+
+      const drawingCanvas = document.getElementById("bufferCanvas")
+      const canvas = document.getElementById("emulatorScreen")
+      const ctx = canvas.getContext("2d")
+      const drawingCtx = drawingCanvas.getContext("2d")
+
+      const originalWidth = 160
+      const originalHeight = 144
+      drawingCanvas.width = originalWidth
+      drawingCanvas.height = originalHeight
+      let drawToCanvas = () => {
+        ctx.drawImage(drawingCanvas, 0, 0, canvas.width, canvas.height)
+        window.requestAnimationFrame(drawToCanvas)
+      }
+
+      window.requestAnimationFrame(drawToCanvas)
+      let drawPixel = (x, y, color) => {
+        const newColor = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${color[3]})`
+        drawingCtx.fillStyle = newColor
+        drawingCtx.fillRect(x, y, 1, 1)
+      }
+
+      const readData = event => {
+        event.data.arrayBuffer().then(buf => {
+          let data = new Uint8Array(buf)
+          let dataIndex = 0
+          let shiftData = () => {
+            let r = data[0]
+            data = data.subarray(1)
+            return r
+          }
+          const difMode = shiftData() == 0xFB
+          if (!difMode) {
+            drawingCtx.clearRect(0, 0, canvas.width, canvas.height)
+          }
+          let x = 0
+          let y = 0
+          while (data.length > 0) {
+            const op = shiftData()
+            if (op > 0x03 && op < 0xA5) {
+              //vertical line index
+              x = op - 4
+              y = 0
+            }
+            else if (op == 0xF0) {
+              do {
+                let pixel = shiftData()
+                if (pixel != 0xFF) drawPixel(x, y, this.colors[pixel])
+                y++
+              } while (data[0] < 0x04 || data[0] == 0xFF)
+            }
+            else if (op == 0xF1) {
+              do {
+                let pixel = shiftData()
+                if (pixel < 0x04) {
+                  drawPixel(x, y, this.colors[pixel])
+                  y++
+                }
+                else if (pixel == 0xFF) {
+                  y++
+                }
+                else if (pixel == 0xF2) {
+                  //repeat byte XX times
+                  let rcount = shiftData()
+                  let rpixel = shiftData()
+                  for (let i = 0; i <= rcount; i++) {
+                    if (rpixel != 0xFF) drawPixel(x, y, this.colors[rpixel])
+                    y++
+                  }
+                }
+                else if (pixel > 0xC0 && pixel < 0xD0) {
+                  //repeat byte X times
+                  let rcount = pixel - 0xC0
+                  let rpixel = shiftData()
+                  for (let i = 0; i <= rcount; i++) {
+                    if (rpixel != 0xFF) drawPixel(x, y, this.colors[rpixel])
+                    y++
+                  }
+                }
+                else if (pixel == 0xFD) {
+                  let rpixel = shiftData()
+                  for (; y < 144; y++) {
+                    if (rpixel != 0xFF) drawPixel(x, y, this.colors[rpixel])
+                  }
+                }
+              } while (data[0] < 0x04 || data[0] > 0xA4)
+            }
+            else if (op == 0xFE) {
+              continue
+            }
+          }
+        })
+      }
+      canvas.width = originalWidth;
+      canvas.height = originalHeight;
+    }
+  }).$mount('#app')
+</script>
+</body>
+
+<style>
+  #emulator {
+    height: 100vh;
+    display: inline-block;
+  }
+
+  #emulatorScreen {
+    display: block;
+    width: 100%;
+    height: auto;
+    margin: 0;
+    image-rendering: pixelated;
+    aspect-ratio: 160/144;
+  }
+
+  #onScreenControls {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr;
+    grid-template-rows: 1fr 1fr 1fr;
+    grid-template-areas:
+      "dpad dpad . . . btn-a"
+      "dpad dpad . . btn-b ."
+      ". . btn-select btn-start . .";
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    gap: 10px;
+    margin-top: 1em;
+    touch-action: none;
+  }
+
+  .btn-a,
+  .btn-b {
+    height: 10vh;
+  }
+
+  .btn-a {
+    grid-area: btn-a;
+  }
+
+  .btn-b {
+    grid-area: btn-b;
+  }
+
+  .btn-start,
+  .btn-select {
+    height: 3vh;
+  }
+
+  .btn-start {
+    grid-area: btn-start;
+  }
+
+  .btn-select {
+    grid-area: btn-select;
+  }
+
+  #dpad {
+    grid-area: dpad;
+    height: 20vh;
+  }
+
+  body,
+  html {
+    margin: 0;
+    background-color: black;
+    -webkit-user-select: none;
+    /* Safari */
+    -ms-user-select: none;
+    /* IE 10 and IE 11 */
+    height: 100vh;
+    overflow: hidden;
+    /* Prevent scrolling */
+    touch-action: manipulation;
+    /* Disable zooming and long press events */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    touch-action: none;
+    -webkit-touch-callout: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    user-select: none;
+    outline: none;
+    overflow: hidden;
+  }
+</style>
+
+</html>
