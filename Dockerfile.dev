@@ -22,4 +22,4 @@ RUN apt update
 RUN apt install -y libasound2
 EXPOSE 1989
 VOLUME /gbdotlive/rom
-CMD if ! [ -e ./rom/rom.gb ]; then echo 'No rom.gb file found. Exiting.'; else /gbdotlive/app -S -r ./rom/rom.gb; fi
+CMD if ! [ -e ./rom/rom.gb ]; then echo 'No rom.gb file found. Exiting.'; else /gbdotlive/app -l -r ./rom/rom.gb; fi
