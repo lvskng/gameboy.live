@@ -14,10 +14,12 @@ WORKDIR /src/gameboy.live
 
 RUN go get .
 RUN go build -o /gbdotlive/app ./main-cli.go
+RUN mv ./config.yaml /gbdotlive/config.yaml
 
 FROM debian:bookworm-slim as final
 WORKDIR /gbdotlive
 COPY --from=build /gbdotlive/app /gbdotlive/app
+COPY --from=build /gbdotlive/config.yaml /gbdotlive/config.yaml
 RUN apt update
 RUN apt install -y libasound2
 EXPOSE 1989
