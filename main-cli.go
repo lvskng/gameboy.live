@@ -112,9 +112,9 @@ func main() {
 	if LiveMode {
 		openPath := ""
 		if envConfigDir := os.Getenv("GBLIVE_CONFIG_DIR"); envConfigDir != "" {
-			openPath = envConfigDir
+			openPath = envConfigDir + "/"
 		}
-		f, err := os.Open(openPath + "/config.yaml")
+		f, err := os.Open(openPath + "config.yaml")
 		if err != nil {
 			panic(err)
 		}
