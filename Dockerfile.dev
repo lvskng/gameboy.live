@@ -16,8 +16,8 @@ RUN go get .
 RUN go build -o /gbdotlive/app ./main-cli.go
 RUN mkdir -p /gbdotlive/data
 RUN mkdir -p /gbdotlive/client
-RUN mv ./config.yaml /gbdotlive/data/config.yaml
-RUN mv ./client/* /gbdotlive/client/
+RUN mv ./config.yaml /gbdotlive/data/
+RUN mv ./client/ /gbdotlive/
 
 FROM debian:bookworm-slim as final
 WORKDIR /gbdotlive
