@@ -25,6 +25,5 @@ COPY --from=build /gbdotlive/ /gbdotlive/
 RUN apt update
 RUN apt install -y libasound2
 EXPOSE 1989
-VOLUME /gbdotlive/rom
-VOLUME /gbdotlive/config.yaml
+VOLUME /gbdotlive/data
 CMD if ! [ -e /gbdotlive/data/rom.gb ]; then echo 'No rom.gb file found. Exiting.'; else /gbdotlive/app -l -r /gbdotlive/data/rom.gb; fi
