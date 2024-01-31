@@ -20,4 +20,8 @@ main
 gamelist.json
 .gitignore
 .vscode/
+.history/
 gbdotlive
+gbdotlive-cli
+__debug*
+config.yaml

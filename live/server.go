@@ -76,10 +76,11 @@ type ClientICEServer struct {
 
 type ICEConfig struct {
 	Server []struct {
-		URLs           []string                 `yaml:"urls"`
-		Username       string                   `yaml:"username,omitempty"`
-		Credential     interface{}              `yaml:"credential,omitempty"`
-		CredentialType webrtc.ICECredentialType `yaml:"credential_type,omitempty"`
+		URLs               []string                 `yaml:"urls"`
+		Username           string                   `yaml:"username,omitempty"`
+		Credential         interface{}              `yaml:"credential,omitempty"`
+		CredentialType     webrtc.ICECredentialType `yaml:"credential_type,omitempty"`
+		DynamicCredentials bool                     `yaml:"dynamic_credentials,omitempty"`
 	} `yaml:"server"`
 	Client []struct {
 		URLs               []string `yaml:"urls"`
@@ -88,6 +89,7 @@ type ICEConfig struct {
 		DynamicCredentials bool     `yaml:"dynamic_credentials,omitempty"`
 	} `yaml:"client"`
 	DynamicCredentialSecret string `yaml:"dynamic_credential_secret,omitempty"`
+	DynamicCredentialTTL    int    `yaml:"dynamic_credential_ttl,omitempty"`
 }
 
 // Run Running the static-image gaming server
@@ -119,10 +121,21 @@ func (s *LiveServer) InitServer() {
 	s.lastInput = 0xFF
 
 	//Implement WebRTC handling
-	//TODO Ignoring STUN credentials for now
 	servers := []webrtc.ICEServer{}
-	for _, s := range s.ICEConfig.Server {
-		servers = append(servers, webrtc.ICEServer(s))
+	for _, srv := range s.ICEConfig.Server {
+		if srv.DynamicCredentials {
+			ttl := int64(s.ICEConfig.DynamicCredentialTTL)
+			timestamp := time.Now().Unix() + ttl
+			username := fmt.Sprintf("%d:%s", timestamp, "server")
+			hmac := hmac.New(sha1.New, []byte(s.ICEConfig.DynamicCredentialSecret))
+			hmac.Write([]byte(username))
+			password := base64.StdEncoding.EncodeToString(hmac.Sum(nil))
+			servers = append(servers, webrtc.ICEServer{URLs: srv.URLs, Username: username, Credential: password})
+		} else if srv.Username != "" && srv.Credential != "" {
+			servers = append(servers, webrtc.ICEServer{URLs: srv.URLs, Username: srv.Username, Credential: srv.Credential})
+		} else {
+			servers = append(servers, webrtc.ICEServer{URLs: srv.URLs})
+		}
 	}
 	config := webrtc.Configuration{
 		ICEServers: servers,
@@ -138,6 +151,11 @@ func (s *LiveServer) InitServer() {
 		}
 		// Handle the offer and create an answer
 		peerConnection, err := webrtc.NewPeerConnection(config)
+		if err != nil {
+			log.Printf("[Live] Error creating peer connection: %v", err)
+			http.Error(w, "Error creating peer connection", http.StatusBadRequest)
+			return
+		}
 		queryParams := r.URL.Query()
 		id := queryParams.Get("id")
 		if s.connections[id] != nil || s.channels[id] != nil {
@@ -260,7 +278,7 @@ func (s *LiveServer) getClientICEConfig(id string) []ClientICEServer {
 	ret := []ClientICEServer{}
 	for _, srv := range s.ICEConfig.Client {
 		if srv.DynamicCredentials {
-			ttl := int64(86400) // TTL of 24 hours
+			ttl := int64(s.ICEConfig.DynamicCredentialTTL)
 			timestamp := time.Now().Unix() + ttl
 			username := fmt.Sprintf("%d:%s", timestamp, id)
 			hmac := hmac.New(sha1.New, []byte(s.ICEConfig.DynamicCredentialSecret))
