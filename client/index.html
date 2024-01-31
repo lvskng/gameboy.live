@@ -315,7 +315,7 @@
       }
 
       peerConnection.onnegotiationneeded = e => {
-        pc.createOffer()
+        peerConnection.createOffer()
           .then(offer => peerConnection.setLocalDescription(offer))
           .catch(console.error);
       };
