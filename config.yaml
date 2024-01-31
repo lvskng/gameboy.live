@@ -1,7 +1,20 @@
 server:
   live:
     port: 1989
-    url: "localhost:1989"
+    url: "http://localhost:1989"
     full_picture_interval: 3 #in seconds
     debug: true
     vue_version: "2.6.12"
+    ice_config:
+      dynamic_credential_secret: ""
+      server:
+        - urls: 
+          - "stun:stun.l.google.com:19302"
+      client:
+        - urls:
+          - "stun:stun.l.google.com:19302"
+        # - urls: "turn:toybox.lolos.space:3478"
+        #   dynamic_credentials: true
+        # - urls: "turn:demo.example.com:3478"
+        #   username: "username"
+        #   credential: "credential"

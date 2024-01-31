@@ -1,6 +1,9 @@
 package live
 
 import (
+	"crypto/hmac"
+	"crypto/sha1"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -37,6 +40,7 @@ type LiveServer struct {
 	FullPictureInterval int
 	Debug               bool
 	VueVersion          string
+	ICEConfig           ICEConfig
 }
 
 type pixelCluster struct {
@@ -60,6 +64,30 @@ type PageData struct {
 	GameName   string
 	DebugMin   string
 	VueVersion string
+	ClientID   string
+	ICEServers []ClientICEServer `json:"iceServers"`
+}
+
+type ClientICEServer struct {
+	URLs       []string `json:"urls"`
+	Username   string   `json:"username,omitempty"`
+	Credential string   `json:"credential,omitempty"`
+}
+
+type ICEConfig struct {
+	Server []struct {
+		URLs           []string                 `yaml:"urls"`
+		Username       string                   `yaml:"username,omitempty"`
+		Credential     interface{}              `yaml:"credential,omitempty"`
+		CredentialType webrtc.ICECredentialType `yaml:"credential_type,omitempty"`
+	} `yaml:"server"`
+	Client []struct {
+		URLs               []string `yaml:"urls"`
+		Username           string   `yaml:"username,omitempty"`
+		Credential         string   `yaml:"credential,omitempty"`
+		DynamicCredentials bool     `yaml:"dynamic_credentials,omitempty"`
+	} `yaml:"client"`
+	DynamicCredentialSecret string `yaml:"dynamic_credential_secret,omitempty"`
 }
 
 // Run Running the static-image gaming server
@@ -91,12 +119,13 @@ func (s *LiveServer) InitServer() {
 	s.lastInput = 0xFF
 
 	//Implement WebRTC handling
+	//TODO Ignoring STUN credentials for now
+	servers := []webrtc.ICEServer{}
+	for _, s := range s.ICEConfig.Server {
+		servers = append(servers, webrtc.ICEServer(s))
+	}
 	config := webrtc.Configuration{
-		ICEServers: []webrtc.ICEServer{
-			{
-				URLs: []string{"stun:stun.l.google.com:19302"},
-			},
-		},
+		ICEServers: servers,
 	}
 
 	http.HandleFunc("/offer", func(w http.ResponseWriter, r *http.Request) {
@@ -109,7 +138,13 @@ func (s *LiveServer) InitServer() {
 		}
 		// Handle the offer and create an answer
 		peerConnection, err := webrtc.NewPeerConnection(config)
-		id := uuid.New().String()
+		queryParams := r.URL.Query()
+		id := queryParams.Get("id")
+		if s.connections[id] != nil || s.channels[id] != nil {
+			log.Printf("[Live] Error handling offer: Client ID is alrready occupied")
+			http.Error(w, "Client ID is already occupied", http.StatusForbidden)
+			return
+		}
 		s.connections[id] = peerConnection
 		ans, err := s.handleWebRTCOffer(peerConnection, offer)
 		if err != nil {
@@ -175,12 +210,16 @@ func (s *LiveServer) InitServer() {
 				debugmin = ""
 			}
 
+			id := uuid.New().String()
+
 			// Create page data with the server URL
 			data := PageData{
 				ServerURL:  s.Url,
 				GameName:   core.GameTitle,
 				DebugMin:   debugmin,
 				VueVersion: s.VueVersion,
+				ICEServers: s.getClientICEConfig(id),
+				ClientID:   id,
 			}
 			w.Header().Add("Access-Control-Allow-Origin", s.Url)
 			// Execute the template with the data and serve
@@ -215,6 +254,38 @@ func (s *LiveServer) InitServer() {
 }
 func (server *LiveServer) Init(px *[160][144][3]uint8, s string) {
 	server.pixels = px
+}
+
+func (s *LiveServer) getClientICEConfig(id string) []ClientICEServer {
+	ret := []ClientICEServer{}
+	for _, srv := range s.ICEConfig.Client {
+		if srv.DynamicCredentials {
+			ttl := int64(86400) // TTL of 24 hours
+			timestamp := time.Now().Unix() + ttl
+			username := fmt.Sprintf("%d:%s", timestamp, id)
+			hmac := hmac.New(sha1.New, []byte(s.ICEConfig.DynamicCredentialSecret))
+			hmac.Write([]byte(username))
+			password := base64.StdEncoding.EncodeToString(hmac.Sum(nil))
+			ret = append(ret, ClientICEServer{
+				URLs:       srv.URLs,
+				Username:   username,
+				Credential: password,
+			})
+		} else {
+			if srv.Username != "" && srv.Credential != "" {
+				ret = append(ret, ClientICEServer{
+					URLs:       srv.URLs,
+					Username:   srv.Username,
+					Credential: srv.Credential,
+				})
+			} else {
+				ret = append(ret, ClientICEServer{
+					URLs: srv.URLs,
+				})
+			}
+		}
+	}
+	return ret
 }
 
 func (s *LiveServer) serveData() {

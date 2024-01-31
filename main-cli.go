@@ -33,11 +33,12 @@ var (
 type LiveServerConfig struct {
 	Server struct {
 		Live struct {
-			Port                int    `yaml:"port"`
-			Url                 string `yaml:"url"`
-			FullPictureInterval int    `yaml:"full_picture_interval"`
-			Debug               bool   `yaml:"debug"`
-			VueVersion          string `yaml:"vue_version"`
+			Port                int            `yaml:"port"`
+			Url                 string         `yaml:"url"`
+			FullPictureInterval int            `yaml:"full_picture_interval"`
+			Debug               bool           `yaml:"debug"`
+			VueVersion          string         `yaml:"vue_version"`
+			ICEConfig           live.ICEConfig `yaml:"ice_config"`
 		} `yaml:"live"`
 	} `yaml:"server"`
 }
@@ -125,7 +126,7 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		s := &live.LiveServer{Port: cfg.Server.Live.Port, GamePath: ROMPath, Debug: cfg.Server.Live.Debug, FullPictureInterval: cfg.Server.Live.FullPictureInterval, Url: cfg.Server.Live.Url, VueVersion: cfg.Server.Live.VueVersion}
+		s := &live.LiveServer{Port: cfg.Server.Live.Port, GamePath: ROMPath, Debug: cfg.Server.Live.Debug, FullPictureInterval: cfg.Server.Live.FullPictureInterval, Url: cfg.Server.Live.Url, VueVersion: cfg.Server.Live.VueVersion, ICEConfig: cfg.Server.Live.ICEConfig}
 		s.InitServer()
 		return
 	}

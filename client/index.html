@@ -230,8 +230,9 @@
 
     },
     mounted() {
-      const SERVER_URL = '{{.ServerURL}}/offer';
-      const configuration = { 'iceServers': [{ 'urls': 'stun:stun.l.google.com:19302' }] };
+      const SERVER_URL = '{{.ServerURL}}/offer?id={{.ClientID}}';
+      // const configuration = { 'iceServers': [{ 'urls': 'stun:stun.l.google.com:19302' }] };
+      const configuration = { "iceServers": {{.ICEServers}}};
       let candidateQueue = [];
       let sendCandidate = candidate => {
         fetch('/candidate', {
