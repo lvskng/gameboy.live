@@ -230,7 +230,7 @@
 
     },
     mounted() {
-      const SERVER_URL = 'http://{{.ServerURL}}/offer';
+      const SERVER_URL = '{{.ServerURL}}/offer';
       const configuration = { 'iceServers': [{ 'urls': 'stun:stun.l.google.com:19302' }] };
       let candidateQueue = [];
       let sendCandidate = candidate => {
