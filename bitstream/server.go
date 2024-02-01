@@ -22,7 +22,10 @@ type BitstreamServer struct {
 
 	drawSignal chan bool
 
-	connections map[string]*websocket.Conn
+	connections map[string]struct {
+		c *websocket.Conn
+		l *sync.Mutex
+	}
 	inputs      map[string]byte
 	inputLock   sync.Mutex
 	inputStatus *byte
@@ -89,7 +92,10 @@ func (s *BitstreamServer) InitServer() {
 	core.Init(s.Config.GamePath)
 	go core.Run()
 
-	s.connections = make(map[string]*websocket.Conn)
+	s.connections = make(map[string]struct {
+		c *websocket.Conn
+		l *sync.Mutex
+	})
 	s.inputs = make(map[string]byte)
 	s.inputChannel = make(chan struct {
 		id  string
@@ -152,7 +158,12 @@ func initStream(s *BitstreamServer) func(http.ResponseWriter, *http.Request) {
 		}
 
 		id := uuid.New().String()
-		s.connections[id] = c
+		conn := struct {
+			c *websocket.Conn
+			l *sync.Mutex
+		}{c: c, l: &sync.Mutex{}}
+		s.connections[id] = conn
+
 		s.inputs[id] = 0xFF //All buttons released
 
 		go func() {
@@ -184,7 +195,7 @@ func initStream(s *BitstreamServer) func(http.ResponseWriter, *http.Request) {
 		for _, line := range bitmap {
 			msg = append(msg, line...)
 		}
-		s.SendMessage(c, msg, id)
+		s.SendMessage(conn, msg, id)
 	}
 }
 
@@ -516,8 +527,13 @@ func (s *BitstreamServer) UpdateInput() bool {
 	return true
 }
 
-func (s *BitstreamServer) SendMessage(c *websocket.Conn, msg []byte, id string) {
-	err := c.WriteMessage(websocket.BinaryMessage, msg)
+func (s *BitstreamServer) SendMessage(conn struct {
+	c *websocket.Conn
+	l *sync.Mutex
+}, msg []byte, id string) {
+	conn.l.Lock()
+	defer conn.l.Unlock()
+	err := conn.c.WriteMessage(websocket.BinaryMessage, msg)
 	if err != nil {
 		log.Printf("[Static] Error sending data: %s", err)
 		s.DropConnection(id)
@@ -526,7 +542,9 @@ func (s *BitstreamServer) SendMessage(c *websocket.Conn, msg []byte, id string) 
 
 func (s *BitstreamServer) DropConnection(id string) {
 	log.Printf("[Static] Dropping connection with ID: %s", id)
-	s.connections[id].Close()
+	conn := s.connections[id]
+	conn.l.Lock()
+	conn.c.Close()
 	delete(s.connections, id)
 	delete(s.inputs, id)
 	s.dropConnectionChannel <- id
