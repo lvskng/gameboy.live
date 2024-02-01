@@ -449,9 +449,11 @@ func (s *BitstreamServer) serveData() {
 				for _, line := range bitmap {
 					msg = append(msg, line...)
 				}
-				for id, c := range s.connections {
-					s.SendMessage(c, msg, id)
-				}
+				go func() {
+					for id, c := range s.connections {
+						s.SendMessage(c, msg, id)
+					}
+				}()
 			} else {
 				bitmap, lastBitmap = s.GetBitmapDelta(lastBitmap)
 				msg := []byte{0xFB}
@@ -465,9 +467,11 @@ func (s *BitstreamServer) serveData() {
 					}
 				}
 				if !empty && len(msg) > 1 {
-					for id, c := range s.connections {
-						s.SendMessage(c, msg, id)
-					}
+					go func() {
+						for id, c := range s.connections {
+							s.SendMessage(c, msg, id)
+						}
+					}()
 				}
 			}
 		case <-ticker.C:
