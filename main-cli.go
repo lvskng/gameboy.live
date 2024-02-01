@@ -32,7 +32,6 @@ var (
 	Debug               bool
 	Url                 string
 	WebSocketUrl        string
-	UseHTTPS            bool
 	ConfigFilePath      string
 	FullPictureInterval int
 )
@@ -58,7 +57,6 @@ func init() {
 	flag.BoolVar(&BitmapStreamingMode, "b", false, "Start a WebSocket bitmap streaming server")
 	flag.IntVar(&FullPictureInterval, "i", 3, "	Set the non-delta bitmap transmission rate in milliseconds")
 	flag.BoolVar(&Debug, "d", false, "Use Debug mode in Server")
-	flag.BoolVar(&UseHTTPS, "ssl", false, "Set if you run gameboy.live behind a HTTPS reverse proxy")
 	flag.StringVar(&Url, "u", "http://localhost:1989", "Set the server URL")
 	flag.StringVar(&WebSocketUrl, "wu", "http://localhost:1989/stream", "Set the WebSocket URL for bitmap streaming server")
 	flag.BoolVar(&LiveMode, "l", false, "Start a WebRTC Live Server")
@@ -85,7 +83,6 @@ func runBitstreamServer() {
 			Port:                ListenPort,
 			GamePath:            ROMPath,
 			Url:                 Url,
-			UseHTTPS:            UseHTTPS,
 			FullPictureInterval: FullPictureInterval,
 			Debug:               Debug,
 		}

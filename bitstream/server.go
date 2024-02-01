@@ -46,7 +46,6 @@ type BitstreamServerConfig struct {
 	GamePath            string `yaml:"game_path"`
 	WebSocketUrl        string `yaml:"websocket_url"`
 	Url                 string `yaml:"url"`
-	UseHTTPS            bool   `yaml:"use_https"`
 	FullPictureInterval int    `yaml:"full_picture_interval,omitempty"`
 	Debug               bool   `yaml:"debug,omitempty"`
 }
@@ -97,8 +96,6 @@ func (s *BitstreamServer) InitServer() {
 		msg []byte
 	})
 	s.lastInput = 0xFF
-	// image and control server
-	//http.HandleFunc("/stream", streamImages(s))
 	http.HandleFunc("/stream", initStream(s))
 	fs := http.FileServer(http.Dir("ws-client"))
 	http.Handle("/static/", http.StripPrefix("/static/", fs))
