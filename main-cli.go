@@ -96,6 +96,7 @@ func runBitstreamServer() {
 		}
 		config = cfg.Server.Bitstream
 	}
+	defer f.Close()
 	server := bitstream.BitstreamServer{
 		Config: config,
 	}
