@@ -267,17 +267,18 @@
       drawingCanvas.width = originalWidth
       drawingCanvas.height = originalHeight
 
-      let resize = () => {
-        let scale = window.devicePixelRatio || 1;
-        ctx.scale(scale, scale);
-      }
+      // let resize = () => {
+      //   let scale = window.devicePixelRatio || 1;
+      //   ctx.scale(scale, scale);
+      // }
 
-      window.addEventListener("resize", resize)
-      resize()
-
-      window.setInterval(() => {
+      // window.addEventListener("resize", resize)
+      // resize()
+      let drawScreen = () => {
         ctx.drawImage(drawingCanvas, 0, 0, canvas.width, canvas.height)
-      }, 33)
+        window.requestAnimationFrame(drawScreen)
+      }
+      window.requestAnimationFrame(drawScreen)
 
       let drawPixel = (x, y, color) => {
         const newColor = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${color[3]})`
