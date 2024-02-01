@@ -13,8 +13,6 @@ server:
       client:
         - urls:
           - "stun:stun.l.google.com:19302"
-        # - urls: "turn:toybox.lolos.space:3478"
-        #   dynamic_credentials: true
         # - urls: "turn:demo.example.com:3478"
         #   username: "username"
         #   credential: "credential"
