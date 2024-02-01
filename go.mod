@@ -13,11 +13,8 @@ require (
 	github.com/go-gl/mathgl v0.0.0-20190416160123-c4601bc793c7 // indirect
 	github.com/google/uuid v1.3.1
 	github.com/gorilla/websocket v1.4.2
-	github.com/gosuri/uilive v0.0.2
 	github.com/logrusorgru/aurora v0.0.0-20190428105938-cea283e61946
 	github.com/pion/webrtc/v3 v3.2.24
-	github.com/reiver/go-oi v0.0.0-20160325061615-431c83978379 // indirect
-	github.com/reiver/go-telnet v0.0.0-20180421082511-9ff0b2ab096e // indirect
 	github.com/satori/go.uuid v1.2.0
 	gopkg.in/yaml.v3 v3.0.1
 )

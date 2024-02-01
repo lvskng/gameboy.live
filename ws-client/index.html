@@ -1,17 +1,17 @@
 <!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <html>
 
 <head>
-  <title>Gameboy.live websocket demo</title>
-  <script src="https://cdn.jsdelivr.net/npm/vue@2.6.12/dist/vue.min.js"></script>
-  <!-- <script src="https://cdn.jsdelivr.net/npm/vue@2.6.12/dist/vue.js"></script> -->
+  <title>{{.GameName}}</title>
+  <script src="https://cdn.jsdelivr.net/npm/vue@2.6.12/dist/vue.{{.DebugMin}}js"></script>
 </head>
 
 <body scroll="no">
   <div id="app">
     <div id="emulator">
-      <!-- <img :src="imageURL" id="emulatorScreen"> -->
       <canvas id="bufferCanvas" style="display: none" height="144" width="160"></canvas>
       <canvas id="emulatorScreen"></canvas>
       <div id="onScreenControls">
@@ -120,13 +120,29 @@
   </div>
 </body>
 <script>
+  function Mutex() {
+    let current = Promise.resolve();
+    this.lock = () => {
+      let _resolve;
+      const p = new Promise(resolve => {
+        _resolve = () => resolve();
+      });
+      // Caller gets a promise that resolves when the current outstanding
+      // lock resolves
+      const rv = current.then(() => _resolve);
+      // Don't allow the next request until the new promise is done
+      current = p;
+      // Return the new promise
+      return rv;
+    };
+  }
 
   new Vue({
     name: 'App',
     data: () => {
       return {
-        wsConn: new WebSocket("ws://localhost:1989/cstream"),
-        input: "",
+        wsConn: new WebSocket("{{.WebSocketUrl}}"),
+        input: '',
         currentBtnPress: '',
         lastButtonPress: '',
         dpadPointerDown: false,
@@ -142,93 +158,90 @@
           START: 7,
           SELECT: 6,
         },
-        colors: [[0x9b, 0xbc, 0x0f, 0xff], [0x8b, 0xac, 0x0f, 0xff], [0x30, 0x62, 0x30, 0xff], [0x0f, 0x38, 0x0f, 0xff]]
+        pressedKeys: {
+          0: false,
+          1: false,
+          2: false,
+          3: false,
+          4: false,
+          5: false,
+          6: false,
+          7: false
+        },
+        keyboardMappings: {
+          ArrowRight: 0,
+          ArrowLeft: 1,
+          ArrowUp: 2,
+          ArrowDown: 3,
+          KeyZ: 4,
+          KeyX: 5,
+          Space: 7,
+          ShiftLeft: 8,
+          ShiftRight: 8
+        },
+        lastInput: 0,
+        lastDpadDown: 0,
+        dpadKeyDown: false,
+        colors: [[0x9b, 0xbc, 0x0f, 0xff], [0x8b, 0xac, 0x0f, 0xff], [0x30, 0x62, 0x30, 0xff], [0x0f, 0x38, 0x0f, 0xff]],
+        inputLock: new Mutex(),
+        drawingCanvasLock: new Mutex(),
       }
     },
     methods: {
-      handleKey(event) {
-        switch (event.code) {
-          case "ArrowRight":
-            this.currentBtnPress = "RIGHT"
-            break;
-          case "ArrowLeft":
-            this.currentBtnPress = "LEFT"
-            break;
-          case "ArrowUp":
-            this.currentBtnPress = "UP"
-            break;
-          case "ArrowDown":
-            this.currentBtnPress = "DOWN"
-            break;
-          case "KeyZ":
-            this.currentBtnPress = "A"
-            break;
-          case "KeyX":
-            this.currentBtnPress = "B"
-            break;
-          case "Space":
-            this.currentBtnPress = "START"
-            break;
-          case "ShiftLeft":
-          case "ShiftRight":
-            this.currentBtnPress = "SELECT"
-            break;
+      async pressKey(event) {
+        let key = this.keyboardMappings[event.code]
+        if (key != undefined) {
+          const unlock = await this.inputLock.lock()
+          this.pressedKeys[key] = true
+          if (key < 4) this.dpadKeyDown = true
+          unlock()
         }
       },
-      releaseKey() {
-        this.currentBtnPress = ""
-      },
-      sendButton() {
-        if (this.currentBtnPress != '') {
-          if (this.currentBtnPress == this.lastButtonPress) {
-            this.buttonPressCount++;
-          }
-          else {
-            this.buttonPressCount = 0;
-          }
-          if (this.buttonPressCount > 8) {
-            this.currentBtnPress = ''
-            this.buttonPressCount = 0
-          }
-          this.wsConn.send(this.keys[this.currentBtnPress])
+      async releaseKey(event) {
+        let key = this.keyboardMappings[event.code]
+        if (key != undefined) {
+          const unlock = await this.inputLock.lock()
+          this.pressedKeys[key] = false
+          if (key < 4) this.dpadKeyDown = false
+          unlock()
         }
       },
       handleDpadTouchStart(event) {
         event.preventDefault();
         let elem = document.elementFromPoint(event.clientX, event.clientY)
         if (!elem) {
-          this.currentBtnPress = ''
+          this.setDpad(4)
         }
         this.dpadPointerDown = true
         let id = elem.id
         if (![...elem.classList].includes("dpad_btn")) return
         let dir = this.getDpadButtonFromId(id)
         if (dir != undefined) {
-          this.currentBtnPress = dir
+          this.setDpad(this.keys[dir])
         }
       },
       handleDpadTouchMove(event) {
         event.preventDefault()
-        if (!this.dpadPointerDown) {
-          this.currentBtnPress = ''
-          return
-        }
-        event.preventDefault();
         let elem = document.elementFromPoint(event.clientX, event.clientY)
-        if (!elem) {
-          this.currentBtnPress = ''
-        }
         let id = elem.id
         if (![...elem.classList].includes("dpad_btn")) return
         let dir = this.getDpadButtonFromId(id)
+        if (!this.dpadPointerDown) {
+          this.setDpad(4)
+          return
+        }
+        if (!elem) {
+          this.setDpad(4)
+        }
+
         if (dir != undefined) {
-          this.currentBtnPress = dir
+          this.setDpad(this.keys[dir])
         }
       },
       handleDpadTouchEnd(event) {
         event.preventDefault()
-        this.currentBtnPress = ''
         this.dpadPointerDown = false
+        this.setDpad(4)
       },
       getDpadButtonFromId(id) {
         switch (id) {
@@ -247,11 +260,23 @@
         let elem = document.elementFromPoint(event.clientX, event.clientY)
         let id = elem.id
         this.currentBtnPress = id.replace("btn-", '').toUpperCase()
+        this.pressedKeys[this.keys[id.replace("btn-", '').toUpperCase()]] = true
       },
       handleButtonTouchEnd(event) {
         event.preventDefault()
         this.currentBtnPress = ''
-      }
+        let elem = document.elementFromPoint(event.clientX, event.clientY)
+        let id = elem.id
+        this.pressedKeys[this.keys[id.replace("btn-", '').toUpperCase()]] = false
+      },
+      setDpad(dir) {
+        for (const key of Object.keys(this.pressedKeys)) {
+          if (key < 4) {
+            if (key == dir) this.pressedKeys[key] = true
+            else this.pressedKeys[key] = false
+          }
+        }
+      },
     },
     created() {
 
@@ -267,15 +292,10 @@
       drawingCanvas.width = originalWidth
       drawingCanvas.height = originalHeight
 
-      // let resize = () => {
-      //   let scale = window.devicePixelRatio || 1;
-      //   ctx.scale(scale, scale);
-      // }
-
-      // window.addEventListener("resize", resize)
-      // resize()
-      let drawScreen = () => {
+      let drawScreen = async () => {
+        const unlock = await this.drawingCanvasLock.lock()
         ctx.drawImage(drawingCanvas, 0, 0, canvas.width, canvas.height)
+        unlock()
         window.requestAnimationFrame(drawScreen)
       }
       window.requestAnimationFrame(drawScreen)
@@ -286,8 +306,9 @@
         drawingCtx.fillRect(x, y, 1, 1)
       }
 
-      this.wsConn.onmessage = (event) => {
-        event.data.arrayBuffer().then(buf => {
+      this.wsConn.onmessage = event => {
+        event.data.arrayBuffer().then(async buf => {
+          const unlock = await this.drawingCanvasLock.lock()
           let data = new Uint8Array(buf)
           let dataIndex = 0
           let shiftData = () => {
@@ -355,14 +376,55 @@
               continue
             }
           }
+          unlock()
         })
       }
 
-      window.addEventListener("keydown", (event) => this.handleKey(event))
+      window.addEventListener("keydown", this.pressKey.bind(this))
       window.addEventListener("keyup", this.releaseKey.bind(this))
-      window.setInterval(this.sendButton.bind(this), 100)
       canvas.width = originalWidth;
       canvas.height = originalHeight;
+
+      this.wsConn.addEventListener("open", event => {
+        let clearBit = (byte, bit) => {
+          return byte & ~(1 << bit);
+        }
+        window.setInterval(async () => {
+          let input = 0xFF
+          const unlock = await this.inputLock.lock()
+          for (const [key, val] of Object.entries(this.pressedKeys)) {
+            if (val === true) {
+              if (key > 3 || (this.dpadPointerDown || this.dpadKeyDown)) input = clearBit(input, key)
+            }
+          }
+          unlock()
+          if (input != 0xFF || input != this.lastInput) {
+            let buf = new ArrayBuffer(1)
+            const v = new DataView(buf)
+            v.setUint8(0, input)
+            this.wsConn.send(buf)
+          }
+          this.lastInput = input
+        }, 100)
+      })
+
+      let preventZoom = function (e) {
+        var t2 = e.timeStamp;
+        var t1 = e.currentTarget.dataset.lastTouch || t2;
+        var dt = t2 - t1;
+        var fingers = e.touches.length;
+        e.currentTarget.dataset.lastTouch = t2;
+
+        if (!dt || dt > 500 || fingers > 1) return; // not double-tap
+
+        e.preventDefault();
+        e.target.click();
+      }
+
+      Object.entries(document.getElementsByClassName("onScreenInput")).forEach(arr => {
+        let btn = arr[1]
+        btn.addEventListener('touchstart', preventZoom)
+      })
     }
   }).$mount('#app')
 </script>
@@ -396,7 +458,6 @@
     width: 100%;
     gap: 10px;
     margin-top: 1em;
-    touch-action: none;
   }
 
   .btn-a,
@@ -441,12 +502,11 @@
     height: 100vh;
     overflow: hidden;
     /* Prevent scrolling */
-    touch-action: manipulation;
+    touch-action: none;
     /* Disable zooming and long press events */
     display: flex;
     justify-content: center;
     align-items: center;
-    touch-action: none;
     -webkit-touch-callout: none;
     -khtml-user-select: none;
     -moz-user-select: none;

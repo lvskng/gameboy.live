@@ -18,3 +18,11 @@ server:
         # - urls: "turn:demo.example.com:3478"
         #   username: "username"
         #   credential: "credential"
+  bitstream:
+    port: 1989
+    game_path: ./rom.gb
+    url: http://localhost:1989
+    websocket_url: ws://localhost:1989/stream
+    use_https: false
+    full_picture_interval: 1000
+    debug: true
