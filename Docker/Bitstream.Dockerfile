@@ -6,7 +6,7 @@ COPY --from=build /gbdotlive/ /gbdotlive/
 WORKDIR /gbdotlive/lib
 RUN dpkg -i *.deb
 
-WORKDIR /
+WORKDIR /gbdotlive
 
 EXPOSE 1989
 VOLUME /gbdotlive/data
