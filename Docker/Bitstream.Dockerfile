@@ -6,6 +6,8 @@ COPY --from=build /gbdotlive/ /gbdotlive/
 WORKDIR /gbdotlive/lib
 RUN dpkg -i *.deb
 
+WORKDIR /
+
 EXPOSE 1989
 VOLUME /gbdotlive/data
 CMD if ! [ -e /gbdotlive/data/rom.gb ]; then echo 'No rom.gb file found. Exiting.'; else /gbdotlive/app -b -r /gbdotlive/data/rom.gb -C /gbdotlive/data/config.yaml; fi
