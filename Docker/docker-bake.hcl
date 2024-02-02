@@ -1,5 +1,5 @@
 group "default" {
-    targets =   ["build-cli", "build-cli-dev", "static", "bitstream-dev"]
+    targets =   ["build-cli", "build-cli-dev", "build-bitstream-dev", "static", "bitstream-dev"]
 }
 
 target "build-cli" {
@@ -8,6 +8,10 @@ target "build-cli" {
 
 target "build-cli-dev" {
     dockerfile = "base-cli.dev.Dockerfile"
+}
+
+target "build-bitstream-dev" {
+    dockerfile = "base-bitstream.dev.Dockerfile"
 }
 
 target "static" {
@@ -19,7 +23,7 @@ target "static" {
 
 target "bitstream-dev" {
     contexts = {
-        build = "target:build-cli-dev"
+        build = "target:build-bitstream-dev"
     }
     dockerfile = "Bitstream.Dockerfile"
 }
