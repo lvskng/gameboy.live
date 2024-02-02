@@ -175,7 +175,6 @@ func initStream(s *BitstreamServer) func(http.ResponseWriter, *http.Request) {
 				select {
 				case dropId := <-s.dropConnectionChannel:
 					if dropId == id {
-						s.DropConnection(id)
 						return
 					}
 				default:
@@ -551,6 +550,10 @@ func (s *BitstreamServer) DropConnection(id string) {
 	conn.c.Close()
 	delete(s.connections, id)
 	delete(s.inputs, id)
+	log.Printf("Active connections: ")
+	for key, _ := range s.connections {
+		log.Printf(key)
+	}
 	s.dropConnectionChannel <- id
 }
 
