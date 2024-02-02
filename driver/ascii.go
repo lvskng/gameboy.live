@@ -17,9 +17,12 @@ type ASCII struct {
 	title string
 }
 
-func (stream *ASCII) Init(pixels *[160][144][3]uint8, title string) {
+func (stream *ASCII) InitRGB(pixels *[160][144][3]uint8, title string) {
 	stream.title = title
 	stream.pixels = pixels
+}
+func (stream *ASCII) Init(pixels *[160][144]uint8, title string) {
+	panic("implement me")
 }
 
 func (stream *ASCII) Run(drawSignal chan bool, onQuit func()) {
@@ -49,8 +52,8 @@ func (stream *ASCII) Run(drawSignal chan bool, onQuit func()) {
 }
 
 /*
-	Render pixelsDirty as Braille
-	Reference: https://github.com/gabrielrcouto/php-terminal-gameboy-emulator/blob/master/src/Canvas/TerminalCanvas.php
+Render pixelsDirty as Braille
+Reference: https://github.com/gabrielrcouto/php-terminal-gameboy-emulator/blob/master/src/Canvas/TerminalCanvas.php
 */
 func (stream *ASCII) renderAscii(pixels [160][144]bool) {
 	if stream.last == pixels {

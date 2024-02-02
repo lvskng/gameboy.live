@@ -17,7 +17,8 @@ import (
 type BitstreamServer struct {
 	Core *gb.Core
 
-	pixels    *[160][144][3]uint8
+	pixelsRGB *[160][144][3]uint8
+	pixels    *[160][144]uint8
 	pixelLock sync.RWMutex
 
 	drawSignal chan bool
@@ -73,9 +74,6 @@ func (s *BitstreamServer) Run(sig chan bool, f func()) {
 // Run Running the static-image gaming server
 func (s *BitstreamServer) InitServer() {
 	// startup the emulator
-	// server.upgrader = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool {
-	// 	return true
-	// }}
 	s.upgrader = websocket.Upgrader{}
 	core := &gb.Core{
 		FPS:           60,
@@ -86,6 +84,7 @@ func (s *BitstreamServer) InitServer() {
 		DrawSignal:    make(chan bool),
 		SpeedMultiple: 0,
 		ToggleSound:   false,
+		UseRGB:        false,
 	}
 	s.Core = core
 	s.drawSignal = core.DrawSignal
@@ -146,8 +145,13 @@ func (s *BitstreamServer) InitServer() {
 	select {}
 }
 
-func (s *BitstreamServer) Init(px *[160][144][3]uint8, str string) {
+func (s *BitstreamServer) Init(px *[160][144]uint8, str string) {
 	s.pixels = px
+}
+
+func (s *BitstreamServer) InitRGB(px *[160][144][3]uint8, str string) {
+	// s.pixelsRGB = px
+	panic("implement me")
 }
 
 func initStream(s *BitstreamServer) func(http.ResponseWriter, *http.Request) {
@@ -201,7 +205,7 @@ func initStream(s *BitstreamServer) func(http.ResponseWriter, *http.Request) {
 
 func (s *BitstreamServer) GetBitmap() ([][]byte, [160][144]byte) {
 	s.pixelLock.RLock()
-	screen := tidyPixels(*s.pixels)
+	screen := *s.pixels
 	s.pixelLock.RUnlock()
 	var retscreen [][]byte
 	for linenum, line := range screen {
@@ -214,7 +218,7 @@ func (s *BitstreamServer) GetBitmap() ([][]byte, [160][144]byte) {
 
 func (s *BitstreamServer) GetBitmapDelta(lastBitmap [160][144]byte) ([][]byte, [160][144]byte) {
 	s.pixelLock.RLock()
-	screen := tidyPixels(*s.pixels)
+	screen := *s.pixels
 	s.pixelLock.RUnlock()
 	var difscreen [][]byte
 	for linenum, line := range screen {

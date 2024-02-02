@@ -42,6 +42,7 @@ func (server *StaticServer) Run() {
 		DrawSignal:    make(chan bool),
 		SpeedMultiple: 0,
 		ToggleSound:   false,
+		UseRGB:        true,
 	}
 	go core.DisplayDriver.Run(core.DrawSignal, func() {})
 	core.Init(server.GamePath)

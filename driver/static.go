@@ -67,7 +67,12 @@ func (s *StaticImage) NewInput(bytes []byte) {
 	panic("implement me")
 }
 
-func (s *StaticImage) Init(pixels *[160][144][3]uint8, s2 string) {
+func (s *StaticImage) Init(pixels *[160][144]uint8, s2 string) {
+	// s.pixelsDirty = pixels
+	panic("implement me")
+}
+
+func (s *StaticImage) InitRGB(pixels *[160][144][3]uint8, s2 string) {
 	s.pixelsDirty = pixels
 	log.Println("[Display] Initialize static image display")
 }

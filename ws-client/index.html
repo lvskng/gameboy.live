@@ -204,7 +204,6 @@
         if (key != undefined) {
           const unlock = await this.inputLock.lock()
           this.pressedKeys[key] = false
-          if (key < 4) this.dpadKeyDown = false
           unlock()
         }
       },
@@ -276,7 +275,7 @@
           if (key < 4) {
             if (key == dir) this.pressedKeys[key] = true
             else this.pressedKeys[key] = false
-          }
+          } else break
         }
       },
     },
@@ -288,6 +287,22 @@
       const canvas = document.getElementById("emulatorScreen")
       const ctx = canvas.getContext("2d")
       const drawingCtx = drawingCanvas.getContext("2d")
+
+      let restoreConn = event => {
+        if (document.hasFocus) {
+          this.wsConn = new WebSocket("{{.WebSocketUrl}}")
+          this.wsConn.onmessage = receiveBitmap
+          this.wsConn.onclose = restoreConn
+        }
+      }
+
+      this.wsConn.onclose = restoreConn
+
+      document.onfocus = () => {
+        if (this.wsConn.readyState != WebSocket.OPEN) {
+          restoreConn()
+        }
+      }
 
       const originalWidth = 160
       const originalHeight = 144
@@ -308,7 +323,7 @@
         drawingCtx.fillRect(x, y, 1, 1)
       }
 
-      this.wsConn.onmessage = event => {
+      let receiveBitmap = event => {
         event.data.arrayBuffer().then(async buf => {
           const unlock = await this.drawingCanvasLock.lock()
           let data = new Uint8Array(buf)
@@ -381,6 +396,8 @@
           unlock()
         })
       }
+
+      this.wsConn.onmessage = receiveBitmap
 
       window.addEventListener("keydown", this.pressKey.bind(this))
       window.addEventListener("keyup", this.releaseKey.bind(this))

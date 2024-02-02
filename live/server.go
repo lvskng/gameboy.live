@@ -22,7 +22,7 @@ type LiveServer struct {
 	Port     int
 	GamePath string
 
-	pixels    *[160][144][3]uint8
+	pixels    *[160][144]uint8
 	pixelLock sync.RWMutex
 
 	inputStatus *byte
@@ -270,7 +270,11 @@ func (s *LiveServer) InitServer() {
 	http.ListenAndServe(fmt.Sprintf(":%d", s.Port), nil)
 	select {}
 }
-func (server *LiveServer) Init(px *[160][144][3]uint8, s string) {
+func (server *LiveServer) InitRGB(px *[160][144][3]uint8, s string) {
+	// server.pixels = px
+	panic("implement me")
+}
+func (server *LiveServer) Init(px *[160][144]uint8, s string) {
 	server.pixels = px
 }
 
@@ -528,7 +532,7 @@ func validateDif(difbmp []byte, lastBitmap, orbitmap [160][144]byte) bool {
 // Get a compressed bitmap of the current screen
 func (s *LiveServer) GetBitmap() ([][]byte, [160][144]byte) {
 	s.pixelLock.RLock()
-	screen := tidyPixels(*s.pixels)
+	screen := *s.pixels
 	s.pixelLock.RUnlock()
 	var retscreen [][]byte
 	for linenum, line := range screen {
@@ -542,7 +546,7 @@ func (s *LiveServer) GetBitmap() ([][]byte, [160][144]byte) {
 // Get a compressed bitmap of the current screen as delta (difference to last screen)
 func (s *LiveServer) GetBitmapDelta(lastBitmap [160][144]byte) ([][]byte, [160][144]byte) {
 	s.pixelLock.RLock()
-	screen := tidyPixels(*s.pixels)
+	screen := *s.pixels
 	s.pixelLock.RUnlock()
 	var difscreen [][]byte
 	for linenum, line := range screen {

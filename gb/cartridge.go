@@ -742,6 +742,9 @@ func readDataFile(path string, ram bool) []byte {
 
 	bufReader := bufio.NewReader(romFile)
 	_, err = bufReader.Read(bytes)
+	if err != nil {
+		log.Fatalf("[Core] Cannot load %s: %s", name, err)
+	}
 
 	log.Println("[Core]", size, "Bytes", name, "loaded")
 	return bytes

@@ -39,10 +39,13 @@ type Core struct {
 	*/
 
 	//Screen pixel data
-	Screen     [160][144][3]uint8
-	ScanLineBG [160]bool
+	Screen         [160][144]uint8
+	ScreenRGB      [160][144][3]uint8
+	ScanLineBG     [160]bool
+	VisibleSprites []Sprite
 	//Display driver
 	DisplayDriver driver.DisplayDriver
+	UseRGB        bool
 	// Signal to tell display driver to draw
 	DrawSignal chan bool
 
@@ -105,7 +108,13 @@ func (core *Core) Init(romPath string) {
 	core.initCPU()
 	core.initCB()
 	core.Controller.InitStatus(&core.JoypadStatus)
-	core.DisplayDriver.Init(&core.Screen, core.GameTitle)
+	if core.UseRGB {
+		core.ScreenRGB = [160][144][3]uint8{}
+		core.DisplayDriver.InitRGB(&core.ScreenRGB, core.GameTitle)
+	} else {
+		core.Screen = [160][144]uint8{}
+		core.DisplayDriver.Init(&core.Screen, core.GameTitle)
+	}
 
 	/*
 		If debug mode is ON, we set the DebugControl to 0x0100,
@@ -124,6 +133,7 @@ func (core *Core) Init(romPath string) {
 func (core *Core) Run() {
 	// Execution interval depends on the FPS
 	ticker := time.NewTicker(time.Second / time.Duration(core.FPS))
+	// ticker := time.NewTicker(time.Duration(16742706) * time.Nanosecond)
 	for range ticker.C {
 		core.Update()
 		// Check controller input interrupt
@@ -166,7 +176,7 @@ func (core *Core) Update() {
 		core.UpdateIO(cycles)
 
 	}
-	core.RenderScreen()
+	// core.RenderScreen()
 }
 
 func (core *Core) UpdateIO(cycles int) {

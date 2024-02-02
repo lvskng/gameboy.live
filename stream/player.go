@@ -54,6 +54,7 @@ func (player *Player) Init() bool {
 			DrawSignal:    make(chan bool),
 			SpeedMultiple: 0,
 			ToggleSound:   false,
+			UseRGB:        true,
 		}
 
 		player.Emulator = core
@@ -87,8 +88,8 @@ func (player *Player) RenderWelcomeScreen() []byte {
 }
 
 /*
-	Show the welcome and game select screen, return
-	selected game ID.
+Show the welcome and game select screen, return
+selected game ID.
 */
 func (player *Player) Welcome() int {
 
@@ -145,7 +146,7 @@ func (player *Player) Welcome() int {
 }
 
 /*
-	Render select multiplayer screen
+Render select multiplayer screen
 */
 func (player *Player) RenderSelectPlayer() []byte {
 	res := "\033[2J\033[H"
@@ -166,7 +167,7 @@ func (player *Player) RenderSelectPlayer() []byte {
 }
 
 /*
-	Select multiplayer
+Select multiplayer
 */
 func (player *Player) SelectPlayer() int {
 

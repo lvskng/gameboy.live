@@ -1,12 +1,55 @@
 package gb
 
 import (
-	"github.com/HFO4/gbc-in-cloud/util"
 	"log"
+	"sort"
+
+	"github.com/HFO4/gbc-in-cloud/util"
 )
 
+type Sprite struct {
+	YSize        int
+	YPos         byte
+	XPos         byte
+	TileLocation byte
+	Attributes   byte
+	Index        byte
+}
+
+func (c *Core) PrepareSprites() []Sprite {
+	visibleSprites := []Sprite{}
+	use8x16 := util.TestBit(c.ReadMemory(0xFF40), 2)
+	for i := 0; i < 40; i++ {
+		index := i * 4
+		yPos := c.ReadMemory(0xFE00+uint16(index)) - 16
+		xPos := c.ReadMemory(0xFE00+uint16(index)+1) - 8
+		tileLocation := c.ReadMemory(0xFE00 + uint16(index) + 2)
+		attributes := c.ReadMemory(0xFE00 + uint16(index) + 3)
+
+		ysize := 8
+		if use8x16 {
+			ysize = 16
+		}
+		scanline := c.ReadMemory(0xFF44)
+
+		// Check if sprite intercepts with the scanline
+		if (scanline >= yPos) && (scanline < (yPos + byte(ysize))) && ysize > 0 {
+			sprite := Sprite{YSize: ysize, YPos: yPos, XPos: xPos, TileLocation: tileLocation, Attributes: attributes, Index: byte(i)}
+			visibleSprites = append(visibleSprites, sprite)
+		}
+	}
+	sort.Slice(visibleSprites, func(i, j int) bool {
+		if visibleSprites[i].XPos == visibleSprites[j].XPos {
+			return visibleSprites[i].Index > visibleSprites[j].Index
+		}
+		return visibleSprites[i].XPos > visibleSprites[j].XPos
+	})
+
+	return visibleSprites
+}
+
 /*
-	Draw the current scan line
+Draw the current scan line
 */
 func (core *Core) DrawScanLine() {
 
@@ -29,78 +72,74 @@ func (core *Core) DrawScanLine() {
 	}
 
 	if util.TestBit(control, 1) {
+		core.VisibleSprites = core.PrepareSprites()
 		core.RenderSprites()
 	}
 }
 
 /*
-	Render Sprites
+Render Sprites
 */
 func (core *Core) RenderSprites() {
-	use8x16 := false
-	lcdControl := core.ReadMemory(0xFF40)
 
-	if util.TestBit(lcdControl, 2) {
-		use8x16 = true
-	}
-	for sprite := 0; sprite < 40; sprite++ {
-		// sprite occupies 4 bytes in the sprite attributes table
-		index := sprite * 4
-		yPos := core.ReadMemory(0xFE00+uint16(index)) - 16
-		xPos := core.ReadMemory(0xFE00+uint16(index)+1) - 8
-		tileLocation := core.ReadMemory(uint16(0xFE00 + index + 2))
-		attributes := core.ReadMemory(0xFE00 + uint16(index) + 3)
-
-		yFlip := util.TestBit(attributes, 6)
-		xFlip := util.TestBit(attributes, 5)
-		priority := !util.TestBit(attributes, 7)
+	for i, sprite := range core.VisibleSprites {
+		if i > 9 {
+			break
+		}
+		yFlip := util.TestBit(sprite.Attributes, 6)
+		xFlip := util.TestBit(sprite.Attributes, 5)
+		priority := !util.TestBit(sprite.Attributes, 7)
 		scanline := core.ReadMemory(0xFF44)
 
-		ysize := 8
-		if use8x16 {
-			ysize = 16
+		line := int(scanline - sprite.YPos)
+		// read the sprite in backwards in the y axis
+		if yFlip {
+			line -= sprite.YSize
+			line *= -1
 		}
+		line *= 2 // same as for tiles
+		dataAddress := (uint16(int(sprite.TileLocation)*16 + line))
+		data1 := core.ReadMemory(0x8000 + dataAddress)
+		data2 := core.ReadMemory(0x8000 + dataAddress + 1)
 
-		// does this sprite intercept with the scanline?
-		if (scanline >= yPos) && (scanline < (yPos + byte(ysize))) {
-			line := int(scanline - yPos)
-			// read the sprite in backwards in the y axis
-			if yFlip {
-				line -= ysize
-				line *= -1
+		// its easier to read in from right to left as pixel 0 is
+		// bit 7 in the colour data, pixel 1 is bit 6 etc...
+		for tilePixel := 7; tilePixel >= 0; tilePixel-- {
+			colourbit := tilePixel
+
+			// read the sprite in backwards for the x axis
+			if xFlip {
+				colourbit -= 7
+				colourbit *= -1
 			}
-			line *= 2 // same as for tiles
-			dataAddress := (uint16(int(tileLocation)*16 + line))
-			data1 := core.ReadMemory(0x8000 + dataAddress)
-			data2 := core.ReadMemory(0x8000 + dataAddress + 1)
 
-			// its easier to read in from right to left as pixel 0 is
-			// bit 7 in the colour data, pixel 1 is bit 6 etc...
-			for tilePixel := 7; tilePixel >= 0; tilePixel-- {
-				colourbit := tilePixel
+			colourNum := util.GetVal(data2, uint(colourbit))
+			colourNum <<= 1
+			colourNum |= util.GetVal(data1, uint(colourbit))
+			colourAddress := uint16(0xFF48)
+			if util.TestBit(sprite.Attributes, 4) {
+				colourAddress = 0xFF49
+			}
+			// now we have the colour id get the actual
+			// colour from palette 0xFF47
+			colour := core.GetColour(colourNum, colourAddress)
 
-				// read the sprite in backwards for the x axis
-				if xFlip {
-					colourbit -= 7
-					colourbit *= -1
-				}
+			// white is transparent for sprites.
+			if colourNum == 0 {
+				continue
+			}
 
-				colourNum := util.GetVal(data2, uint(colourbit))
-				colourNum <<= 1
-				colourNum |= util.GetVal(data1, uint(colourbit))
-				colourAddress := uint16(0xFF48)
-				if util.TestBit(attributes, 4) {
-					colourAddress = 0xFF49
-				}
-				// now we have the colour id get the actual
-				// colour from palette 0xFF47
-				colour := core.GetColour(colourNum, colourAddress)
+			xPix := 0 - tilePixel
+			xPix += 7
 
-				// white is transparent for sprites.
-				if colourNum == 0 {
-					continue
-				}
+			pixel := int(sprite.XPos) + xPix
 
+			// sanity check
+			if (scanline > 143) || (pixel > 159) {
+				continue
+			}
+
+			if core.UseRGB {
 				red := uint8(0)
 				green := uint8(0)
 				blue := uint8(0)
@@ -124,22 +163,15 @@ func (core *Core) RenderSprites() {
 					blue = 0
 				}
 
-				xPix := 0 - tilePixel
-				xPix += 7
-
-				pixel := int(xPos) + xPix
-
-				// sanity check
-				if (scanline < 0) || (scanline > 143) || (pixel < 0) || (pixel > 159) {
-					continue
-				}
-
 				if core.ScanLineBG[pixel] || priority {
-					core.Screen[pixel][scanline][0] = red
-					core.Screen[pixel][scanline][1] = green
-					core.Screen[pixel][scanline][2] = blue
+					core.ScreenRGB[pixel][scanline][0] = red
+					core.ScreenRGB[pixel][scanline][1] = green
+					core.ScreenRGB[pixel][scanline][2] = blue
 				}
-
+			} else {
+				if core.ScanLineBG[pixel] || priority {
+					core.Screen[pixel][scanline] = colour
+				}
 			}
 		}
 
@@ -149,7 +181,7 @@ func (core *Core) RenderSprites() {
 var last uint16
 
 /*
-	Render Tiles for the current scan line
+Render Tiles for the current scan line
 */
 func (core *Core) RenderTiles() {
 	var tileData uint16 = 0
@@ -297,32 +329,10 @@ func (core *Core) RenderTiles() {
 		// colour from palette 0xFF47
 		colour := core.GetColour(colourNum, 0xFF47)
 
-		red := uint8(0)
-		green := uint8(0)
-		blue := uint8(0)
-
-		switch colour {
-		case 0:
-			red = 255
-			green = 255
-			blue = 255
-		case 1:
-			red = 0xCC
-			green = 0xCC
-			blue = 0xCC
-		case 2:
-			red = 0x77
-			green = 0x77
-			blue = 0x77
-		default:
-			red = 0
-			green = 0
-			blue = 0
-		}
 		finally := int(core.ReadMemory(0xFF44))
 		// safety check to make sure what im about
 		// to set is int the 160x144 bounds
-		if (finally < 0) || (finally > 143) || (pixel < 0) || (pixel > 159) {
+		if (finally < 0) || (finally > 143) || (pixel > 159) {
 			continue
 		}
 
@@ -333,23 +343,52 @@ func (core *Core) RenderTiles() {
 			core.ScanLineBG[pixel] = false
 		}
 
-		core.Screen[pixel][finally][0] = red
-		core.Screen[pixel][finally][1] = green
-		core.Screen[pixel][finally][2] = blue
+		if core.UseRGB {
+
+			red := uint8(0)
+			green := uint8(0)
+			blue := uint8(0)
+
+			switch colour {
+			case 0:
+				red = 255
+				green = 255
+				blue = 255
+			case 1:
+				red = 0xCC
+				green = 0xCC
+				blue = 0xCC
+			case 2:
+				red = 0x77
+				green = 0x77
+				blue = 0x77
+			default:
+				red = 0
+				green = 0
+				blue = 0
+			}
+
+			core.ScreenRGB[pixel][finally][0] = red
+			core.ScreenRGB[pixel][finally][1] = green
+			core.ScreenRGB[pixel][finally][2] = blue
+		} else {
+			core.Screen[pixel][finally] = colour
+		}
 	}
 
 }
 
 /*
-	Get colour id via colour palette and colour Num
-		0 - WHITE
-		1 - LIGHT_GRAY
-		2 - DARK_GRAY
-		3 - BLACK
-	TODO: GCB mode
+Get colour id via colour palette and colour Num
+
+	0 - WHITE
+	1 - LIGHT_GRAY
+	2 - DARK_GRAY
+	3 - BLACK
+
+TODO: GCB mode
 */
-func (core *Core) GetColour(colourNum byte, address uint16) int {
-	res := 0
+func (core *Core) GetColour(colourNum byte, address uint16) byte {
 	palette := core.ReadMemory(address)
 
 	// which bits of the colour palette does the colour id map to?
@@ -378,20 +417,11 @@ func (core *Core) GetColour(colourNum byte, address uint16) int {
 	colour = util.GetVal(palette, hi) << 1
 	colour |= util.GetVal(palette, lo)
 
-	switch colour {
-	case 0:
-		res = 0
-	case 1:
-		res = 1
-	case 2:
-		res = 2
-	case 3:
-		res = 3
-	default:
-		res = 0
+	if colour > 3 {
+		return 0
+	} else {
+		return colour
 	}
-
-	return res
 }
 
 func (core *Core) RenderScreen() {
