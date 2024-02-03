@@ -22,7 +22,6 @@ import (
 type BitstreamServer struct {
 	Core *gb.Core
 
-	pixelsRGB *[160][144][3]uint8
 	pixels    *[160][144]uint8
 	pixelLock sync.RWMutex
 
@@ -46,7 +45,6 @@ type BitstreamServer struct {
 		id  string
 		msg []byte
 	}
-	dropConnectionChannel chan string
 }
 
 type BitstreamServerConfig struct {
@@ -56,6 +54,7 @@ type BitstreamServerConfig struct {
 	Url                 string `yaml:"url"`
 	FullPictureInterval int    `yaml:"full_picture_interval,omitempty"`
 	Debug               bool   `yaml:"debug,omitempty"`
+	ClientWriteTimeout  int    `yaml:"client_write_timeout"`
 	RateLimit           struct {
 		ms    int `yaml:"ms"`
 		burst int `yaml:"burst"`
@@ -76,11 +75,11 @@ type PageData struct {
 }
 
 type Connection struct {
-	c      *websocket.Conn
-	l      *sync.Mutex
-	m      chan []byte
-	close  func()
-	closed *bool
+	c         *websocket.Conn
+	l         *sync.Mutex
+	m         chan []byte
+	closeSlow func()
+	closed    *bool
 }
 
 func (s *BitstreamServer) Run(sig chan bool, f func()) {
@@ -158,6 +157,14 @@ func (s *BitstreamServer) InitServer() {
 
 func (s *BitstreamServer) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 	id := uuid.New().String()
+	ipAddr := r.Header.Get("X-Real-Ip")
+	if ipAddr == "" {
+		ipAddr = r.Header.Get("X-Forwarded-For")
+	}
+	if ipAddr == "" {
+		ipAddr = r.RemoteAddr
+	}
+	log.Printf("[Bitstream] New connection %s from %s", id, ipAddr)
 	err := s.subscribe(r.Context(), w, r, id)
 	if errors.Is(err, context.Canceled) {
 		return
@@ -175,23 +182,7 @@ func (s *BitstreamServer) handleSubscribe(w http.ResponseWriter, r *http.Request
 func (s *BitstreamServer) subscribe(ctx context.Context, w http.ResponseWriter, r *http.Request, id string) error {
 	var c *websocket.Conn
 	mu := sync.Mutex{}
-	var closed bool
-	conn := &Connection{
-		c: c,
-		l: &mu,
-		m: make(chan []byte, s.SubscriberMessageBuffer),
-		close: func() {
-			mu.Lock()
-			defer mu.Unlock()
-			closed = true
-			if c != nil {
-				c.Close(websocket.StatusPolicyViolation, "connection too slow")
-			}
-		},
-	}
-
-	s.addConnection(conn, id)
-	defer s.DropConnection(id)
+	var closed bool = false
 	c2, err := websocket.Accept(w, r, nil)
 	if err != nil {
 		return err
@@ -202,6 +193,24 @@ func (s *BitstreamServer) subscribe(ctx context.Context, w http.ResponseWriter, 
 		return net.ErrClosed
 	}
 	c = c2
+	conn := &Connection{
+		c:      c,
+		l:      &mu,
+		m:      make(chan []byte, s.SubscriberMessageBuffer),
+		closed: &closed,
+		closeSlow: func() {
+			mu.Lock()
+			closed = true
+			if c != nil {
+				c.Close(websocket.StatusPolicyViolation, "connection too slow")
+				mu.Unlock()
+				s.DropConnection(id)
+			}
+		},
+	}
+
+	s.addConnection(conn, id)
+	defer conn.closeSlow()
 	mu.Unlock()
 	defer c.CloseNow()
 
@@ -228,12 +237,12 @@ func (s *BitstreamServer) subscribe(ctx context.Context, w http.ResponseWriter, 
 	for {
 		select {
 		case msg := <-conn.m:
-			err := writeTimeout(ctx, time.Second*5, c, msg)
+			err := writeTimeout(ctx, time.Duration(s.Config.ClientWriteTimeout)*time.Millisecond, conn, msg)
 			if err != nil {
 				return err
 			}
 		case <-ctx.Done():
-			return ctx.Err()
+			return nil
 		}
 	}
 
@@ -302,11 +311,14 @@ func (s *BitstreamServer) InitRGB(px *[160][144][3]uint8, str string) {
 // 	}
 // }
 
-func writeTimeout(ctx context.Context, timeout time.Duration, c *websocket.Conn, msg []byte) error {
+func writeTimeout(ctx context.Context, timeout time.Duration, conn *Connection, msg []byte) error {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-
-	return c.Write(ctx, websocket.MessageBinary, msg)
+	closed := *conn.closed
+	if closed {
+		return errors.New("Connection is closed")
+	}
+	return conn.c.Write(ctx, websocket.MessageBinary, msg)
 }
 
 func (s *BitstreamServer) GetBitmap() ([][]byte, [160][144]byte) {
@@ -430,28 +442,28 @@ func (s *BitstreamServer) GetBitmapDelta(lastBitmap [160][144]byte) ([][]byte, [
 }
 
 // reduce pixel colors to one numerical value
-func tidyPixels(pixels [160][144][3]byte) [160][144]byte {
-	var screen [160][144]byte
-	for y := 0; y < 144; y++ {
-		for x := 0; x < 160; x++ {
-			r, g, b := pixels[x][y][0], pixels[x][y][1], pixels[x][y][2]
-			var color byte
+// func tidyPixels(pixels [160][144][3]byte) [160][144]byte {
+// 	var screen [160][144]byte
+// 	for y := 0; y < 144; y++ {
+// 		for x := 0; x < 160; x++ {
+// 			r, g, b := pixels[x][y][0], pixels[x][y][1], pixels[x][y][2]
+// 			var color byte
 
-			if r == 0xFF && g == 0xFF && b == 0xFF {
-				color = 0x00
-			} else if r == 0xCC && g == 0xCC && b == 0xCC {
-				color = 0x01
-			} else if r == 0x77 && g == 0x77 && b == 0x77 {
-				color = 0x02
-			} else {
-				color = 0x03
-			}
+// 			if r == 0xFF && g == 0xFF && b == 0xFF {
+// 				color = 0x00
+// 			} else if r == 0xCC && g == 0xCC && b == 0xCC {
+// 				color = 0x01
+// 			} else if r == 0x77 && g == 0x77 && b == 0x77 {
+// 				color = 0x02
+// 			} else {
+// 				color = 0x03
+// 			}
 
-			screen[x][y] = color
-		}
-	}
-	return screen
-}
+// 			screen[x][y] = color
+// 		}
+// 	}
+// 	return screen
+// }
 
 // get repeating sections of a line for compression
 func getLineClusters(line []byte) []pixelCluster {
@@ -570,11 +582,16 @@ func (s *BitstreamServer) serveData() {
 				for _, line := range bitmap {
 					msg = append(msg, line...)
 				}
-				for _, c := range s.connections {
-					go func(c *Connection) {
-						c.m <- msg
-					}(c)
-				}
+				go func() {
+					for _, c := range s.connections {
+						s.rateLimiter.Wait(context.Background())
+						select {
+						case c.m <- msg:
+						default:
+							go c.closeSlow()
+						}
+					}
+				}()
 			} else {
 				bitmap, lastBitmap = s.GetBitmapDelta(lastBitmap)
 				msg := []byte{0xFB}
@@ -588,11 +605,16 @@ func (s *BitstreamServer) serveData() {
 					}
 				}
 				if !empty && len(msg) > 1 {
-					for _, c := range s.connections {
-						go func(c *Connection) {
-							c.m <- msg
-						}(c)
-					}
+					go func() {
+						for _, c := range s.connections {
+							s.rateLimiter.Wait(context.Background())
+							select {
+							case c.m <- msg:
+							default:
+								go c.closeSlow()
+							}
+						}
+					}()
 				}
 			}
 		case <-ticker.C:
@@ -694,7 +716,7 @@ func (s *BitstreamServer) SendMessage(conn Connection, msg []byte, id string) {
 }
 
 func (s *BitstreamServer) DropConnection(id string) {
-	log.Printf("[Static] Dropping connection with ID: %s", id)
+	log.Printf("[Bitstream] Dropping connection with ID: %s", id)
 	s.connectionsLock.Lock()
 	s.inputLock.Lock()
 	defer s.connectionsLock.Unlock()

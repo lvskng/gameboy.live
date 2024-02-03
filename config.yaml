@@ -24,6 +24,7 @@ server:
     use_https: false
     full_picture_interval: 1000
     debug: true
+    client_write_timeout: 5000
     rate_limit:
       ms: 100
       burst: 8
