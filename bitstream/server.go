@@ -1,17 +1,22 @@
 package bitstream
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
 	"text/template"
 	"time"
 
+	"golang.org/x/time/rate"
+
 	"github.com/HFO4/gbc-in-cloud/gb"
 	"github.com/google/uuid"
-	"github.com/gorilla/websocket"
+	"nhooyr.io/websocket"
 )
 
 type BitstreamServer struct {
@@ -23,20 +28,19 @@ type BitstreamServer struct {
 
 	drawSignal chan bool
 
-	connections map[string]struct {
-		c *websocket.Conn
-		l *sync.Mutex
-	}
-	inputs      map[string]byte
-	inputLock   sync.Mutex
-	inputStatus *byte
-	lastInput   byte
+	connections     map[string]*Connection
+	connectionsLock sync.Mutex
+	inputs          map[string]byte
+	inputLock       sync.Mutex
+	inputStatus     *byte
+	lastInput       byte
 
-	Config BitstreamServerConfig
+	Config                  BitstreamServerConfig
+	SubscriberMessageBuffer int
+
+	rateLimiter *rate.Limiter
 
 	Debug bool
-
-	upgrader websocket.Upgrader
 
 	inputChannel chan struct {
 		id  string
@@ -52,6 +56,10 @@ type BitstreamServerConfig struct {
 	Url                 string `yaml:"url"`
 	FullPictureInterval int    `yaml:"full_picture_interval,omitempty"`
 	Debug               bool   `yaml:"debug,omitempty"`
+	RateLimit           struct {
+		ms    int `yaml:"ms"`
+		burst int `yaml:"burst"`
+	} `yaml:"rate_limit,omitempty"`
 }
 
 type pixelCluster struct {
@@ -67,6 +75,14 @@ type PageData struct {
 	WebSocketUrl string
 }
 
+type Connection struct {
+	c      *websocket.Conn
+	l      *sync.Mutex
+	m      chan []byte
+	close  func()
+	closed *bool
+}
+
 func (s *BitstreamServer) Run(sig chan bool, f func()) {
 	panic("implement me")
 }
@@ -74,7 +90,6 @@ func (s *BitstreamServer) Run(sig chan bool, f func()) {
 // Run Running the static-image gaming server
 func (s *BitstreamServer) InitServer() {
 	// startup the emulator
-	s.upgrader = websocket.Upgrader{}
 	core := &gb.Core{
 		FPS:           60,
 		Clock:         4194304,
@@ -91,22 +106,18 @@ func (s *BitstreamServer) InitServer() {
 	core.Init(s.Config.GamePath)
 	go core.Run()
 
-	s.connections = make(map[string]struct {
-		c *websocket.Conn
-		l *sync.Mutex
-	})
+	s.rateLimiter = rate.NewLimiter(rate.Every(time.Duration(s.Config.RateLimit.ms)), s.Config.RateLimit.burst)
+	s.SubscriberMessageBuffer = 16
+	s.connections = make(map[string]*Connection)
 	s.inputs = make(map[string]byte)
 	s.inputChannel = make(chan struct {
 		id  string
 		msg []byte
 	})
 	s.lastInput = 0xFF
-	http.HandleFunc("/stream", initStream(s))
+	http.HandleFunc("/stream", s.handleSubscribe)
 	fs := http.FileServer(http.Dir("ws-client"))
 	http.Handle("/static/", http.StripPrefix("/static/", fs))
-	http.HandleFunc("/test", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Printf(("wassup"))
-	})
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// Check if the request is for index.html
 		if strings.ToLower(r.URL.Path) == "/" || strings.ToLower(r.URL.Path) == "/index.html" {
@@ -145,6 +156,98 @@ func (s *BitstreamServer) InitServer() {
 	select {}
 }
 
+func (s *BitstreamServer) handleSubscribe(w http.ResponseWriter, r *http.Request) {
+	id := uuid.New().String()
+	err := s.subscribe(r.Context(), w, r, id)
+	if errors.Is(err, context.Canceled) {
+		return
+	}
+	if websocket.CloseStatus(err) == websocket.StatusNormalClosure ||
+		websocket.CloseStatus(err) == websocket.StatusGoingAway {
+		return
+	}
+	if err != nil {
+		log.Printf("[Bitstream] Error with connection %s: %v", id, err)
+		return
+	}
+}
+
+func (s *BitstreamServer) subscribe(ctx context.Context, w http.ResponseWriter, r *http.Request, id string) error {
+	var c *websocket.Conn
+	mu := sync.Mutex{}
+	var closed bool
+	conn := &Connection{
+		c: c,
+		l: &mu,
+		m: make(chan []byte, s.SubscriberMessageBuffer),
+		close: func() {
+			mu.Lock()
+			defer mu.Unlock()
+			closed = true
+			if c != nil {
+				c.Close(websocket.StatusPolicyViolation, "connection too slow")
+			}
+		},
+	}
+
+	s.addConnection(conn, id)
+	defer s.DropConnection(id)
+	c2, err := websocket.Accept(w, r, nil)
+	if err != nil {
+		return err
+	}
+	mu.Lock()
+	if closed {
+		mu.Unlock()
+		return net.ErrClosed
+	}
+	c = c2
+	mu.Unlock()
+	defer c.CloseNow()
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				_, input, err := c.Read(ctx)
+				if err != nil {
+					return
+				}
+				if len(input) > 0 {
+					s.inputChannel <- struct {
+						id  string
+						msg []byte
+					}{id: id, msg: input}
+				}
+			}
+		}
+	}()
+
+	for {
+		select {
+		case msg := <-conn.m:
+			err := writeTimeout(ctx, time.Second*5, c, msg)
+			if err != nil {
+				return err
+			}
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+
+}
+
+func (s *BitstreamServer) addConnection(conn *Connection, id string) {
+	s.connectionsLock.Lock()
+	s.inputLock.Lock()
+	defer s.connectionsLock.Unlock()
+	defer s.inputLock.Unlock()
+	s.connections[id] = conn
+	s.inputs[id] = 0xFF
+}
+
 func (s *BitstreamServer) Init(px *[160][144]uint8, str string) {
 	s.pixels = px
 }
@@ -154,52 +257,56 @@ func (s *BitstreamServer) InitRGB(px *[160][144][3]uint8, str string) {
 	panic("implement me")
 }
 
-func initStream(s *BitstreamServer) func(http.ResponseWriter, *http.Request) {
-	return func(w http.ResponseWriter, req *http.Request) {
-		c, err := s.upgrader.Upgrade(w, req, nil)
-		if err != nil {
-			log.Printf("[Static] Upgrde error: %v", err)
-		}
+// func initStream(s *BitstreamServer) func(http.ResponseWriter, *http.Request) {
+// 	return func(w http.ResponseWriter, req *http.Request) {
+// 		c, err := s.upgrader.Upgrade(w, req, nil)
+// 		if err != nil {
+// 			log.Printf("[Static] Upgrde error: %v", err)
+// 		}
 
-		id := uuid.New().String()
-		conn := struct {
-			c *websocket.Conn
-			l *sync.Mutex
-		}{c: c, l: &sync.Mutex{}}
-		s.connections[id] = conn
+// 		id := uuid.New().String()
+// 		conn := Connection{c: c, l: &sync.Mutex{}}
+// 		s.connections[id] = conn
 
-		s.inputs[id] = 0xFF //All buttons released
+// 		s.inputs[id] = 0xFF //All buttons released
 
-		go func() {
-			for {
-				select {
-				case dropId := <-s.dropConnectionChannel:
-					if dropId == id {
-						return
-					}
-				default:
-					_, msg, err := c.ReadMessage()
-					if err != nil {
-						log.Printf("[Static] Error reading from channel %s: %v", id, err)
-						s.DropConnection(id)
-						break
-					}
-					if len(msg) > 0 {
-						s.inputChannel <- struct {
-							id  string
-							msg []byte
-						}{id: id, msg: msg}
-					}
-				}
-			}
-		}()
-		bitmap, _ := s.GetBitmap()
-		msg := []byte{0xFA}
-		for _, line := range bitmap {
-			msg = append(msg, line...)
-		}
-		s.SendMessage(conn, msg, id)
-	}
+// 		go func() {
+// 			for {
+// 				select {
+// 				case dropId := <-s.dropConnectionChannel:
+// 					if dropId == id {
+// 						return
+// 					}
+// 				default:
+// 					_, msg, err := c.ReadMessage()
+// 					if err != nil {
+// 						log.Printf("[Static] Error reading from channel %s: %v", id, err)
+// 						s.DropConnection(id)
+// 						break
+// 					}
+// 					if len(msg) > 0 {
+// 						s.inputChannel <- struct {
+// 							id  string
+// 							msg []byte
+// 						}{id: id, msg: msg}
+// 					}
+// 				}
+// 			}
+// 		}()
+// 		bitmap, _ := s.GetBitmap()
+// 		msg := []byte{0xFA}
+// 		for _, line := range bitmap {
+// 			msg = append(msg, line...)
+// 		}
+// 		s.SendMessage(conn, msg, id)
+// 	}
+// }
+
+func writeTimeout(ctx context.Context, timeout time.Duration, c *websocket.Conn, msg []byte) error {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	return c.Write(ctx, websocket.MessageBinary, msg)
 }
 
 func (s *BitstreamServer) GetBitmap() ([][]byte, [160][144]byte) {
@@ -463,10 +570,56 @@ func (s *BitstreamServer) serveData() {
 				for _, line := range bitmap {
 					msg = append(msg, line...)
 				}
-				go func() {
-					for id, c := range s.connections {
-						s.SendMessage(c, msg, id)
+				for _, c := range s.connections {
+					go func(c *Connection) {
+						c.m <- msg
+					}(c)
+				}
+			} else {
+				bitmap, lastBitmap = s.GetBitmapDelta(lastBitmap)
+				msg := []byte{0xFB}
+				empty := false
+				for _, line := range bitmap {
+					if line[1] != 0xFE {
+						empty = false
+						msg = append(msg, line...)
+					} else {
+						empty = true
 					}
+				}
+				if !empty && len(msg) > 1 {
+					for _, c := range s.connections {
+						go func(c *Connection) {
+							c.m <- msg
+						}(c)
+					}
+				}
+			}
+		case <-ticker.C:
+			sendFullImage = true
+		}
+	}
+}
+
+func (s *BitstreamServer) XserveData() {
+	var bitmap [][]byte
+	var lastBitmap [160][144]byte
+	ticker := time.NewTicker(time.Duration(s.Config.FullPictureInterval) * time.Millisecond)
+	sendFullImage := false
+	for {
+		select {
+		case <-s.drawSignal:
+			if sendFullImage {
+				sendFullImage = false
+				bitmap, lastBitmap = s.GetBitmap()
+				msg := []byte{0xFA}
+				for _, line := range bitmap {
+					msg = append(msg, line...)
+				}
+				go func() {
+					// for id, c := range s.connections {
+					// 	s.SendMessage(c, msg, id)
+					// }
 				}()
 			} else {
 				bitmap, lastBitmap = s.GetBitmapDelta(lastBitmap)
@@ -482,9 +635,9 @@ func (s *BitstreamServer) serveData() {
 				}
 				if !empty && len(msg) > 1 {
 					go func() {
-						for id, c := range s.connections {
-							s.SendMessage(c, msg, id)
-						}
+						// for id, c := range s.connections {
+						// 	// s.SendMessage(c, msg, id)
+						// }
 					}()
 				}
 			}
@@ -530,31 +683,24 @@ func (s *BitstreamServer) UpdateInput() bool {
 	return true
 }
 
-func (s *BitstreamServer) SendMessage(conn struct {
-	c *websocket.Conn
-	l *sync.Mutex
-}, msg []byte, id string) {
+func (s *BitstreamServer) SendMessage(conn Connection, msg []byte, id string) {
 	conn.l.Lock()
 	defer conn.l.Unlock()
-	err := conn.c.WriteMessage(websocket.BinaryMessage, msg)
-	if err != nil {
-		log.Printf("[Static] Error sending data: %s", err)
-		s.DropConnection(id)
-	}
+	// err := conn.c.WriteMessage(websocket.BinaryMessage, msg)
+	// if err != nil {
+	// 	log.Printf("[Static] Error sending data: %s", err)
+	// 	s.DropConnection(id)
+	// }
 }
 
 func (s *BitstreamServer) DropConnection(id string) {
 	log.Printf("[Static] Dropping connection with ID: %s", id)
-	conn := s.connections[id]
-	conn.l.Lock()
-	conn.c.Close()
+	s.connectionsLock.Lock()
+	s.inputLock.Lock()
+	defer s.connectionsLock.Unlock()
+	defer s.inputLock.Unlock()
 	delete(s.connections, id)
 	delete(s.inputs, id)
-	log.Printf("Active connections: ")
-	for key, _ := range s.connections {
-		log.Printf(key)
-	}
-	s.dropConnectionChannel <- id
 }
 
 func (s *BitstreamServer) NewInput([]byte) {

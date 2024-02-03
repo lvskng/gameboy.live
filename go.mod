@@ -16,5 +16,7 @@ require (
 	github.com/logrusorgru/aurora v0.0.0-20190428105938-cea283e61946
 	github.com/pion/webrtc/v3 v3.2.24
 	github.com/satori/go.uuid v1.2.0
+	golang.org/x/time v0.5.0
 	gopkg.in/yaml.v3 v3.0.1
+	nhooyr.io/websocket v1.8.10
 )

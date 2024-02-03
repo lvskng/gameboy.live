@@ -191,6 +191,12 @@
     },
     methods: {
       async pressKey(event) {
+        if (event.code == "F3") {
+          var dataURL = document.getElementById("emulatorScreen").toDataURL("image/png");
+          var newTab = window.open('about:blank', 'image from canvas');
+          newTab.document.write("<img src='" + dataURL + "' alt='from canvas'/>");
+          return;
+        }
         let key = this.keyboardMappings[event.code]
         if (key != undefined) {
           const unlock = await this.inputLock.lock()
@@ -289,11 +295,13 @@
       const drawingCtx = drawingCanvas.getContext("2d")
 
       let restoreConn = event => {
-        if (document.hasFocus) {
-          this.wsConn = new WebSocket("{{.WebSocketUrl}}")
-          this.wsConn.onmessage = receiveBitmap
-          this.wsConn.onclose = restoreConn
-        }
+        setTimeout(() => {
+          if (document.hasFocus) {
+            this.wsConn = new WebSocket("{{.WebSocketUrl}}")
+            this.wsConn.onmessage = receiveBitmap
+            this.wsConn.onclose = restoreConn
+          }
+        }, "3000");
       }
 
       this.wsConn.onclose = restoreConn

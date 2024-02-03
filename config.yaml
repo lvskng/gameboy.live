@@ -24,3 +24,6 @@ server:
     use_https: false
     full_picture_interval: 1000
     debug: true
+    rate_limit:
+      ms: 100
+      burst: 8
