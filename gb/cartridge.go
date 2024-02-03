@@ -91,6 +91,8 @@ var RamBankMap = map[byte]uint8{
 	byte(0x03): 4,
 }
 
+var RAMBytesCounter int
+
 type Cartridge struct {
 	Props *CartridgeProps
 	MBC   MBC
@@ -766,5 +768,10 @@ func writeRamFile(ramPath string, data []byte) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("[Core] %d Bytes ram written\n", size)
+	RAMBytesCounter += size
+	//If the ram gets written approximately once every second (at least on my machine) this will print out the sice once per hour
+	if RAMBytesCounter >= 117964800 {
+		RAMBytesCounter = 0
+		log.Printf("[Core] %d MiB RAM written\n", size/(1024*1024))
+	}
 }

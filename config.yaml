@@ -25,6 +25,7 @@ server:
     full_picture_interval: 1000
     debug: true
     client_write_timeout: 5000
+    pause_if_idle: true
     rate_limit:
       ms: 100
       burst: 8

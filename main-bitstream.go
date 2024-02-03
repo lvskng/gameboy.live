@@ -8,7 +8,6 @@ import (
 	"os"
 
 	"github.com/HFO4/gbc-in-cloud/bitstream"
-	"github.com/HFO4/gbc-in-cloud/live"
 	"gopkg.in/yaml.v3"
 )
 
@@ -36,14 +35,6 @@ var (
 
 type Config struct {
 	Server struct {
-		Live struct {
-			Port                int            `yaml:"port"`
-			Url                 string         `yaml:"url"`
-			FullPictureInterval int            `yaml:"full_picture_interval"`
-			Debug               bool           `yaml:"debug"`
-			VueVersion          string         `yaml:"vue_version"`
-			ICEConfig           live.ICEConfig `yaml:"ice_config"`
-		} `yaml:"live,omitempty"`
 		Bitstream bitstream.BitstreamServerConfig `yaml:"bitstream,omitempty"`
 	} `yaml:"server"`
 }

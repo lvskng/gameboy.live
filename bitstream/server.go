@@ -27,12 +27,13 @@ type BitstreamServer struct {
 
 	drawSignal chan bool
 
-	connections     map[string]*Connection
-	connectionsLock sync.Mutex
-	inputs          map[string]byte
-	inputLock       sync.Mutex
-	inputStatus     *byte
-	lastInput       byte
+	connections         map[string]*Connection
+	connectionsLock     sync.Mutex
+	newConnectionSignal chan bool
+	inputs              map[string]byte
+	inputLock           sync.Mutex
+	inputStatus         *byte
+	lastInput           byte
 
 	Config                  BitstreamServerConfig
 	SubscriberMessageBuffer int
@@ -55,6 +56,7 @@ type BitstreamServerConfig struct {
 	FullPictureInterval int    `yaml:"full_picture_interval,omitempty"`
 	Debug               bool   `yaml:"debug,omitempty"`
 	ClientWriteTimeout  int    `yaml:"client_write_timeout"`
+	PauseIfIdle         bool   `yaml:"pause_if_idle"`
 	RateLimit           struct {
 		ms    int `yaml:"ms"`
 		burst int `yaml:"burst"`
@@ -99,6 +101,7 @@ func (s *BitstreamServer) InitServer() {
 		SpeedMultiple: 0,
 		ToggleSound:   false,
 		UseRGB:        false,
+		PauseSignal:   make(chan bool),
 	}
 	s.Core = core
 	s.drawSignal = core.DrawSignal
@@ -109,6 +112,7 @@ func (s *BitstreamServer) InitServer() {
 	s.SubscriberMessageBuffer = 16
 	s.connections = make(map[string]*Connection)
 	s.inputs = make(map[string]byte)
+	s.newConnectionSignal = make(chan bool)
 	s.inputChannel = make(chan struct {
 		id  string
 		msg []byte
@@ -233,7 +237,18 @@ func (s *BitstreamServer) subscribe(ctx context.Context, w http.ResponseWriter, 
 			}
 		}
 	}()
-
+	bitmap, _ := s.GetBitmap()
+	msg := []byte{0xFA}
+	for _, line := range bitmap {
+		msg = append(msg, line...)
+	}
+	err = writeTimeout(ctx, time.Duration(s.Config.ClientWriteTimeout)*time.Millisecond, conn, msg)
+	if err != nil {
+		return err
+	}
+	if s.Config.PauseIfIdle {
+		s.newConnectionSignal <- true
+	}
 	for {
 		select {
 		case msg := <-conn.m:
@@ -265,51 +280,6 @@ func (s *BitstreamServer) InitRGB(px *[160][144][3]uint8, str string) {
 	// s.pixelsRGB = px
 	panic("implement me")
 }
-
-// func initStream(s *BitstreamServer) func(http.ResponseWriter, *http.Request) {
-// 	return func(w http.ResponseWriter, req *http.Request) {
-// 		c, err := s.upgrader.Upgrade(w, req, nil)
-// 		if err != nil {
-// 			log.Printf("[Static] Upgrde error: %v", err)
-// 		}
-
-// 		id := uuid.New().String()
-// 		conn := Connection{c: c, l: &sync.Mutex{}}
-// 		s.connections[id] = conn
-
-// 		s.inputs[id] = 0xFF //All buttons released
-
-// 		go func() {
-// 			for {
-// 				select {
-// 				case dropId := <-s.dropConnectionChannel:
-// 					if dropId == id {
-// 						return
-// 					}
-// 				default:
-// 					_, msg, err := c.ReadMessage()
-// 					if err != nil {
-// 						log.Printf("[Static] Error reading from channel %s: %v", id, err)
-// 						s.DropConnection(id)
-// 						break
-// 					}
-// 					if len(msg) > 0 {
-// 						s.inputChannel <- struct {
-// 							id  string
-// 							msg []byte
-// 						}{id: id, msg: msg}
-// 					}
-// 				}
-// 			}
-// 		}()
-// 		bitmap, _ := s.GetBitmap()
-// 		msg := []byte{0xFA}
-// 		for _, line := range bitmap {
-// 			msg = append(msg, line...)
-// 		}
-// 		s.SendMessage(conn, msg, id)
-// 	}
-// }
 
 func writeTimeout(ctx context.Context, timeout time.Duration, conn *Connection, msg []byte) error {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
@@ -441,30 +411,6 @@ func (s *BitstreamServer) GetBitmapDelta(lastBitmap [160][144]byte) ([][]byte, [
 	return difscreen, screen
 }
 
-// reduce pixel colors to one numerical value
-// func tidyPixels(pixels [160][144][3]byte) [160][144]byte {
-// 	var screen [160][144]byte
-// 	for y := 0; y < 144; y++ {
-// 		for x := 0; x < 160; x++ {
-// 			r, g, b := pixels[x][y][0], pixels[x][y][1], pixels[x][y][2]
-// 			var color byte
-
-// 			if r == 0xFF && g == 0xFF && b == 0xFF {
-// 				color = 0x00
-// 			} else if r == 0xCC && g == 0xCC && b == 0xCC {
-// 				color = 0x01
-// 			} else if r == 0x77 && g == 0x77 && b == 0x77 {
-// 				color = 0x02
-// 			} else {
-// 				color = 0x03
-// 			}
-
-// 			screen[x][y] = color
-// 		}
-// 	}
-// 	return screen
-// }
-
 // get repeating sections of a line for compression
 func getLineClusters(line []byte) []pixelCluster {
 	clusters := []pixelCluster{}
@@ -572,39 +518,18 @@ func (s *BitstreamServer) serveData() {
 	var lastBitmap [160][144]byte
 	ticker := time.NewTicker(time.Duration(s.Config.FullPictureInterval) * time.Millisecond)
 	sendFullImage := false
+	running := true
 	for {
 		select {
 		case <-s.drawSignal:
-			if sendFullImage {
-				sendFullImage = false
-				bitmap, lastBitmap = s.GetBitmap()
-				msg := []byte{0xFA}
-				for _, line := range bitmap {
-					msg = append(msg, line...)
-				}
-				go func() {
-					for _, c := range s.connections {
-						s.rateLimiter.Wait(context.Background())
-						select {
-						case c.m <- msg:
-						default:
-							go c.closeSlow()
-						}
-					}
-				}()
-			} else {
-				bitmap, lastBitmap = s.GetBitmapDelta(lastBitmap)
-				msg := []byte{0xFB}
-				empty := false
-				for _, line := range bitmap {
-					if line[1] != 0xFE {
-						empty = false
+			if running {
+				if sendFullImage {
+					sendFullImage = false
+					bitmap, lastBitmap = s.GetBitmap()
+					msg := []byte{0xFA}
+					for _, line := range bitmap {
 						msg = append(msg, line...)
-					} else {
-						empty = true
 					}
-				}
-				if !empty && len(msg) > 1 {
 					go func() {
 						for _, c := range s.connections {
 							s.rateLimiter.Wait(context.Background())
@@ -615,56 +540,49 @@ func (s *BitstreamServer) serveData() {
 							}
 						}
 					}()
-				}
-			}
-		case <-ticker.C:
-			sendFullImage = true
-		}
-	}
-}
-
-func (s *BitstreamServer) XserveData() {
-	var bitmap [][]byte
-	var lastBitmap [160][144]byte
-	ticker := time.NewTicker(time.Duration(s.Config.FullPictureInterval) * time.Millisecond)
-	sendFullImage := false
-	for {
-		select {
-		case <-s.drawSignal:
-			if sendFullImage {
-				sendFullImage = false
-				bitmap, lastBitmap = s.GetBitmap()
-				msg := []byte{0xFA}
-				for _, line := range bitmap {
-					msg = append(msg, line...)
-				}
-				go func() {
-					// for id, c := range s.connections {
-					// 	s.SendMessage(c, msg, id)
-					// }
-				}()
-			} else {
-				bitmap, lastBitmap = s.GetBitmapDelta(lastBitmap)
-				msg := []byte{0xFB}
-				empty := false
-				for _, line := range bitmap {
-					if line[1] != 0xFE {
-						empty = false
-						msg = append(msg, line...)
-					} else {
-						empty = true
+				} else {
+					bitmap, lastBitmap = s.GetBitmapDelta(lastBitmap)
+					msg := []byte{0xFB}
+					empty := false
+					for _, line := range bitmap {
+						if line[1] != 0xFE {
+							empty = false
+							msg = append(msg, line...)
+						} else {
+							empty = true
+						}
+					}
+					if !empty && len(msg) > 1 {
+						go func() {
+							for _, c := range s.connections {
+								s.rateLimiter.Wait(context.Background())
+								select {
+								case c.m <- msg:
+								default:
+									go c.closeSlow()
+								}
+							}
+						}()
+					}
+					if s.Config.PauseIfIdle && len(s.connections) == 0 && s.Core.Running {
+						log.Println("[Bitstream] No connections open, pausing emulator")
+						go func() {
+							s.Core.PauseSignal <- true
+						}()
+						running = false
 					}
 				}
-				if !empty && len(msg) > 1 {
-					go func() {
-						// for id, c := range s.connections {
-						// 	// s.SendMessage(c, msg, id)
-						// }
-					}()
-				}
 			}
 		case <-ticker.C:
 			sendFullImage = true
+		case <-s.newConnectionSignal:
+			if s.Config.PauseIfIdle {
+				log.Println("[Bitstream] Resuming emulation")
+				go func() {
+					s.Core.PauseSignal <- false
+				}()
+				running = true
+			}
 		}
 	}
 }
@@ -705,16 +623,6 @@ func (s *BitstreamServer) UpdateInput() bool {
 	return true
 }
 
-func (s *BitstreamServer) SendMessage(conn Connection, msg []byte, id string) {
-	conn.l.Lock()
-	defer conn.l.Unlock()
-	// err := conn.c.WriteMessage(websocket.BinaryMessage, msg)
-	// if err != nil {
-	// 	log.Printf("[Static] Error sending data: %s", err)
-	// 	s.DropConnection(id)
-	// }
-}
-
 func (s *BitstreamServer) DropConnection(id string) {
 	log.Printf("[Bitstream] Dropping connection with ID: %s", id)
 	s.connectionsLock.Lock()
@@ -728,83 +636,6 @@ func (s *BitstreamServer) DropConnection(id string) {
 func (s *BitstreamServer) NewInput([]byte) {
 	panic("implement me")
 }
-
-// func streamCompressedDifImages(server *BitstreamServer) func(http.ResponseWriter, *http.Request) {
-// 	return func(w http.ResponseWriter, req *http.Request) {
-// 		c, err := server.upgrader.Upgrade(w, req, nil)
-// 		if err != nil {
-// 			log.Print(":upgrade error: ", err)
-// 			return
-// 		}
-// 		defer c.Close()
-// 		tick := 0
-// 		go func() {
-// 			for {
-// 				_, msg, err2 := c.ReadMessage()
-// 				stringMsg := string(msg)
-// 				if err2 != nil {
-// 					log.Println(err2)
-// 					break
-// 				}
-// 				buttonByte, err3 := strconv.ParseUint(stringMsg, 10, 32)
-// 				if err3 != nil {
-// 					log.Println(err3)
-// 					continue
-// 				}
-// 				if buttonByte > 7 {
-// 					log.Printf("Received input (%s) > 7", stringMsg)
-// 					continue
-// 				}
-// 				server.driver.EnqueueInput(byte(buttonByte))
-// 			}
-// 		}()
-// 		var bitmap [][]byte
-// 		var lastBitmap [160][144]byte
-// 		for {
-// 			var connType byte
-// 			if tick%1000 == 0 {
-// 				bitmap, lastBitmap = server.driver.GetBitmap()
-// 				connType = 0xFA
-// 			} else {
-// 				bitmap, lastBitmap = server.driver.GetBitmapDelta(lastBitmap)
-// 				connType = 0xFB
-// 			}
-// 			//Debug
-// 			// img := server.driver.Render()
-// 			// var imageBuf bytes.Buffer
-// 			// png.Encode(&imageBuf, img)
-// 			// if snapshot, err := os.Create("snapshots/curr.png"); err == nil {
-// 			// 	png.Encode(snapshot, img)
-// 			// 	snapshot.Close()
-// 			// }
-// 			msg := []byte{connType}
-// 			empty := false
-// 			for _, line := range bitmap {
-// 				if line[1] != 0xFE {
-// 					empty = false
-// 				} else {
-// 					empty = true
-// 				}
-// 				msg = append(msg, line...)
-// 			}
-// 			//validate screen for debug purposes
-// 			// _, orbitmap := server.driver.GetBitmap()
-// 			// if !validateDif(msg, lastBitmap, orbitmap) {
-// 			// 	log.Printf("cannot validate dif image")
-// 			// }
-// 			if (connType == 0xFA || !empty) && len(msg) > 1 {
-// 				err = c.WriteMessage(websocket.BinaryMessage, msg)
-// 			}
-// 			if err != nil {
-// 				log.Println("write error:", err)
-// 				break
-// 			}
-// 			tick++
-// 			//time.Sleep(16 * time.Millisecond)
-// 		}
-
-// 	}
-// }
 
 // validates a delta screen for debug purposes
 // func validateDif(difbmp []byte, lastBitmap, orbitmap [160][144]byte) bool {
@@ -914,117 +745,4 @@ func (s *BitstreamServer) NewInput([]byte) {
 // 	// 	log.Printf("difstrings for invalid lines: %s", d)
 // 	// }
 // 	return len(pixels) == 0
-// }
-
-// func streamImages(server *BitstreamServer) func(http.ResponseWriter, *http.Request) {
-// 	return func(w http.ResponseWriter, req *http.Request) {
-// 		c, err := server.upgrader.Upgrade(w, req, nil)
-// 		if err != nil {
-// 			log.Print(":upgrade error: ", err)
-// 			return
-// 		}
-// 		defer c.Close()
-// 		go func() {
-// 			for {
-// 				_, msg, err2 := c.ReadMessage()
-// 				stringMsg := string(msg)
-// 				if err2 != nil {
-// 					log.Println(err2)
-// 					break
-// 				}
-// 				buttonByte, err3 := strconv.ParseUint(stringMsg, 10, 32)
-// 				if err3 != nil {
-// 					log.Println(err3)
-// 					continue
-// 				}
-// 				if buttonByte > 7 {
-// 					log.Printf("Received input (%s) > 7", stringMsg)
-// 					continue
-// 				}
-// 				server.driver.EnqueueInput(byte(buttonByte))
-// 			}
-// 		}()
-// 		for {
-// 			img := server.driver.Render()
-// 			buf := new(bytes.Buffer)
-// 			err = png.Encode(buf, img)
-// 			if err != nil {
-// 				log.Println(err)
-// 				continue
-// 			}
-// 			err = c.WriteMessage(websocket.BinaryMessage, buf.Bytes())
-// 			if err != nil {
-// 				log.Println("write error:", err)
-// 				break
-// 			}
-// 		}
-// 	}
-// }
-
-// func showSVG(server *BitstreamServer) func(http.ResponseWriter, *http.Request) {
-// 	svg, _ := ioutil.ReadFile("gb.svg")
-
-// 	return func(w http.ResponseWriter, req *http.Request) {
-// 		callback, _ := req.URL.Query()["callback"]
-
-// 		w.Header().Set("Cache-control", "no-cache,max-age=0")
-// 		w.Header().Set("Content-type", "image/svg+xml")
-// 		w.Header().Set("Expires", time.Now().Add(time.Duration(-1)*time.Hour).UTC().Format(http.TimeFormat))
-
-// 		// Encode image to Base64
-// 		img := server.driver.Render()
-// 		var imageBuf bytes.Buffer
-// 		png.Encode(&imageBuf, img)
-// 		encoded := base64.StdEncoding.EncodeToString(imageBuf.Bytes())
-
-// 		// Embaded image into svg template
-// 		res := strings.ReplaceAll(string(svg), "{image}", "data:image/png;base64,"+encoded)
-
-// 		// Replace callback url
-// 		res = strings.ReplaceAll(res, "{callback}", callback[0])
-
-// 		w.Write([]byte(res))
-// 	}
-// }
-
-// func showImage(server *BitstreamServer) func(http.ResponseWriter, *http.Request) {
-// 	lastSave := time.Now().Add(time.Duration(-1) * time.Hour)
-// 	return func(w http.ResponseWriter, req *http.Request) {
-// 		w.Header().Set("Cache-control", "no-cache,max-age=0")
-// 		w.Header().Set("Content-type", "image/png")
-// 		w.Header().Set("Expires", time.Now().Add(time.Duration(-1)*time.Hour).UTC().Format(http.TimeFormat))
-// 		img := server.driver.Render()
-// 		png.Encode(w, img)
-
-// 		// Save snapshot every 10 minutes
-// 		if time.Now().Sub(lastSave).Minutes() > 10 {
-// 			lastSave = time.Now()
-// 			if snapshot, err := os.Create("snapshots/" + strconv.FormatInt(time.Now().Unix(), 10) + ".png"); err == nil {
-// 				png.Encode(snapshot, img)
-// 				snapshot.Close()
-// 			} else {
-// 				fmt.Println(err)
-// 			}
-// 		}
-// 	}
-// }
-
-// func newInput(server *BitstreamServer) func(http.ResponseWriter, *http.Request) {
-// 	return func(w http.ResponseWriter, req *http.Request) {
-// 		keys, ok := req.URL.Query()["button"]
-// 		callback, _ := req.URL.Query()["callback"]
-
-// 		if !ok || len(keys) < 1 || len(callback) < 1 {
-// 			return
-// 		}
-
-// 		buttonByte, err := strconv.ParseUint(keys[0], 10, 32)
-// 		if err != nil || buttonByte > 7 {
-// 			return
-// 		}
-
-// 		server.driver.EnqueueInput(byte(buttonByte))
-// 		time.Sleep(time.Duration(500) * time.Millisecond)
-// 		http.Redirect(w, req, callback[0], http.StatusSeeOther)
-// 	}
 // }

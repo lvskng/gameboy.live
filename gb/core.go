@@ -86,6 +86,9 @@ type Core struct {
 	Exit      bool
 	GameTitle string
 	RamPath   string
+
+	PauseSignal chan bool
+	Running     bool
 }
 
 type Timer struct {
@@ -133,17 +136,31 @@ func (core *Core) Init(romPath string) {
 func (core *Core) Run() {
 	// Execution interval depends on the FPS
 	ticker := time.NewTicker(time.Second / time.Duration(core.FPS))
+	core.Running = true
 	// ticker := time.NewTicker(time.Duration(16742706) * time.Nanosecond)
-	for range ticker.C {
-		core.Update()
-		// Check controller input interrupt
-		if core.Controller.UpdateInput() {
-			core.RequestInterrupt(4)
-		}
-		// Check exit signal
-		if core.Exit {
-			close(core.DrawSignal)
-			return
+	for {
+		select {
+		case <-ticker.C:
+			if core.Running {
+				core.Update()
+				// Check controller input interrupt
+				if core.Controller.UpdateInput() {
+					core.RequestInterrupt(4)
+				}
+				// Check exit signal
+				if core.Exit {
+					close(core.DrawSignal)
+					return
+				}
+			}
+		case pause := <-core.PauseSignal:
+			if pause {
+				log.Printf("[Core] Pausing emulation")
+				core.Running = false
+			} else {
+				log.Printf("[Core] Resuming emulation")
+				core.Running = true
+			}
 		}
 	}
 }

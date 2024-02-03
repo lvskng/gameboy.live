@@ -296,7 +296,7 @@
 
       let restoreConn = event => {
         setTimeout(() => {
-          if (document.hasFocus) {
+          if (document.hasFocus && !this.wsConn || this.wsConn.readyState == 3) {
             this.wsConn = new WebSocket("{{.WebSocketUrl}}")
             this.wsConn.onmessage = receiveBitmap
             this.wsConn.onclose = restoreConn
