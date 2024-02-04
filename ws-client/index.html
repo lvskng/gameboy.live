@@ -14,9 +14,8 @@
 <body scroll="no">
   <div id="app">
     <div id="emulator">
-      <canvas id="bufferCanvas" style="display: none" height="144" width="160"></canvas>
-      <canvas id="emulatorScreen"></canvas>
-      <div id="onScreenControls">
+      <canvas id="emulatorScreen" @click="toggleSettings"></canvas>
+      <div id="onScreenControls" v-if="!hideControls">
         <svg xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg"
           viewBox="0 0 20.025 19.866000000000003" version="1.1" xml:space="preserve" id="dpad" class="onScreenInput"
           @pointerdown="handleDpadTouchStart" @pointermove="handleDpadTouchMove" @pointerup="handleDpadTouchEnd"
@@ -119,6 +118,37 @@
           @pointercancel="handleButtonTouchEnd" class="onScreenInput btn-b" />
       </div>
     </div>
+    <div class="settings-menu" v-if="showSettings" @click.self="toggleSettings(false)">
+      <div class="settings-content">
+        <h2>Settings</h2>
+        <div class="setting">
+          <label><input type="checkbox" v-model="hideControls" @change="toggleFullscreen($event)"> Hide On-Screen
+            Controls</label>
+        </div>
+        <div class="setting">
+          <h3>Change Pixel Colors:</h3>
+          <div v-for="(color, index) in getColors()" :key="index" class="color-picker">
+            <input type="color" :value="color" @change="updateColors(index, $event.target.value)">
+          </div>
+          Opacity: <input type="number" v-model="opacity" @change="updateOpacity" min="0" max="255">
+          <br />
+          <button @click="resetColors()">Reset</button>
+        </div>
+        <div class="setting">
+          <h3>Keyboard Bindings:</h3>
+          <div v-for="(key, action) in keyboardMappings" :key="action" class="key-binding">
+            <label>{{"{{ getGBKeyForScancode(key) }}"}}:</label>
+            <select @change="updateKeyBindings(key, action, $event.target.value)">
+              <option v-for="(code, index) in scanCodes" :value="code" :key="index" :selected="code == action">
+                {{"{{code}}"}}</option>
+            </select>
+          </div>
+          <button @click="resetKeys()">Reset</button>
+        </div>
+        <br />
+        <button @click="toggleSettings(false)">Close</button>
+      </div>
+    </div>
   </div>
 </body>
 <script>
@@ -150,6 +180,8 @@
         dpadPointerDown: false,
         buttonPressCount: 0,
         emulatorScreen: [],
+        showSettings: false,
+        hideControls: false,
         keys: {
           UP: 2,
           DOWN: 3,
@@ -178,18 +210,182 @@
           KeyZ: 4,
           KeyX: 5,
           Space: 7,
-          ShiftLeft: 8,
-          ShiftRight: 8
+          ShiftRight: 6
         },
         lastInput: 0,
         lastDpadDown: 0,
         dpadKeyDown: false,
+        opacity: 0xFF,
         colors: [[0x9b, 0xbc, 0x0f, 0xff], [0x8b, 0xac, 0x0f, 0xff], [0x30, 0x62, 0x30, 0xff], [0x0f, 0x38, 0x0f, 0xff]],
+        scanCodes: [ //All possible keyboard scan codes in JS
+          "Backspace",
+          "Tab",
+          "Enter",
+          "ShiftLeft",
+          "ShiftRight",
+          "ControlLeft",
+          "ControlRight",
+          "AltLeft",
+          "AltRight",
+          "Pause",
+          "CapsLock",
+          "Escape",
+          "Space",
+          "PageUp",
+          "PageDown",
+          "End",
+          "Home",
+          "ArrowLeft",
+          "ArrowUp",
+          "ArrowRight",
+          "ArrowDown",
+          "PrintScreen",
+          "Insert",
+          "Delete",
+          "Digit0",
+          "Digit1",
+          "Digit2",
+          "Digit3",
+          "Digit4",
+          "Digit5",
+          "Digit6",
+          "Digit7",
+          "Digit8",
+          "Digit9",
+          "KeyA",
+          "KeyB",
+          "KeyC",
+          "KeyD",
+          "KeyE",
+          "KeyF",
+          "KeyG",
+          "KeyH",
+          "KeyI",
+          "KeyJ",
+          "KeyK",
+          "KeyL",
+          "KeyM",
+          "KeyN",
+          "KeyO",
+          "KeyP",
+          "KeyQ",
+          "KeyR",
+          "KeyS",
+          "KeyT",
+          "KeyU",
+          "KeyV",
+          "KeyW",
+          "KeyX",
+          "KeyY",
+          "KeyZ",
+          "MetaLeft",
+          "MetaRight",
+          "ContextMenu",
+          "Numpad0",
+          "Numpad1",
+          "Numpad2",
+          "Numpad3",
+          "Numpad4",
+          "Numpad5",
+          "Numpad6",
+          "Numpad7",
+          "Numpad8",
+          "Numpad9",
+          "NumpadMultiply",
+          "NumpadAdd",
+          "NumpadSubtract",
+          "NumpadDecimal",
+          "NumpadDivide",
+          "F1",
+          "F2",
+          "F3",
+          "F4",
+          "F5",
+          "F6",
+          "F7",
+          "F8",
+          "F9",
+          "F10",
+          "F11",
+          "F12",
+          "NumLock",
+          "ScrollLock",
+          "Semicolon",
+          "Equal",
+          "Comma",
+          "Minus",
+          "Period",
+          "Slash",
+          "Backquote",
+          "BracketLeft",
+          "Backslash",
+          "BracketRight",
+          "Quote"
+        ],
         inputLock: new Mutex(),
         drawingCanvasLock: new Mutex(),
       }
     },
     methods: {
+      toggleSettings(value) {
+        this.showSettings = value;
+        if (!value) {
+          this.saveSettingsToCookie()
+        }
+      },
+      toggleFullscreen(event) {
+        document.getElementById("emulatorScreen").style.height = event.srcElement.checked ? "100vh" : "auto"
+      },
+      getColors() {
+        ret = []
+        for (const color of this.colors) {
+          const [r, g, b, a] = color
+          ret.push(`#${r > 15 ? "" : "0"}${r.toString(16)}${g > 15 ? "" : "0"}${g.toString(16)}${b > 15 ? "" : "0"}${b.toString(16)}`)
+        }
+        return ret
+      },
+      updateColors(index, color) {
+        let col = []
+        color = color.substring(1) //remove #
+        for (i = 0; i < 3; i++) {
+          col[i] = parseInt(`${color[0] + color[1]}`, 16)
+          color = color.substring(2)
+        }
+        col[3] = this.opacity
+        Vue.set(this.colors, index, col);
+      },
+      updateOpacity() {
+        let newColors = []
+        for (const color of this.colors) {
+          newColors.push([color[0], color[1], color[2], this.opacity])
+        }
+        this.colors = newColors
+      },
+      resetColors() {
+        this.opacity = 0xFF
+        this.colors = [[0x9b, 0xbc, 0x0f, 0xff], [0x8b, 0xac, 0x0f, 0xff], [0x30, 0x62, 0x30, 0xff], [0x0f, 0x38, 0x0f, 0xff]]
+      },
+      updateKeyBindings(gbKey, oldKey, newKey) {
+        Vue.delete(this.keyboardMappings, oldKey)
+        Vue.set(this.keyboardMappings, newKey, gbKey)
+      },
+      getGBKeyForScancode(scancode) {
+        for (const [index, key] of Object.entries(this.keys)) {
+          if (key == scancode) return index
+        }
+      },
+      resetKeys() {
+        this.keyboardMappings = {
+          ArrowRight: 0,
+          ArrowLeft: 1,
+          ArrowUp: 2,
+          ArrowDown: 3,
+          KeyZ: 4,
+          KeyX: 5,
+          Space: 7,
+          ShiftRight: 6
+        }
+      },
       async pressKey(event) {
         if (event.code == "F3") {
           var dataURL = document.getElementById("emulatorScreen").toDataURL("image/png");
@@ -284,176 +480,213 @@
           } else break
         }
       },
-    },
-    created() {
+      saveSettingsToCookie() {
+        const settings = {
+          hideControls: this.hideControls,
+          opacity: this.opacity,
+          colors: this.colors,
+          keyboardMappings: this.keyboardMappings,
+        };
+        const settingsString = JSON.stringify(settings);
+        const d = new Date();
+        d.setTime(d.getTime() + (365 * 24 * 60 * 60 * 1000)); // 1 year expiration
+        const expires = "expires=" + d.toUTCString();
+        document.cookie = "gameSettings=" + settingsString + ";" + expires + ";path=/";
+      },
 
-    },
-    mounted() {
-      const drawingCanvas = document.getElementById("bufferCanvas")
-      const canvas = document.getElementById("emulatorScreen")
-      const ctx = canvas.getContext("2d")
-      const drawingCtx = drawingCanvas.getContext("2d")
-
-      let restoreConn = event => {
-        setTimeout(() => {
-          if (document.hasFocus && !this.wsConn || this.wsConn.readyState == 3) {
-            this.wsConn = new WebSocket("{{.WebSocketUrl}}")
-            this.wsConn.onmessage = receiveBitmap
-            this.wsConn.onclose = restoreConn
+      loadSettingsFromCookie() {
+        const name = "gameSettings=";
+        const decodedCookie = decodeURIComponent(document.cookie);
+        const ca = decodedCookie.split(';');
+        for (let i = 0; i < ca.length; i++) {
+          let c = ca[i];
+          while (c.charAt(0) == ' ') {
+            c = c.substring(1);
           }
-        }, "3000");
-      }
-
-      this.wsConn.onclose = restoreConn
-
-      document.onfocus = () => {
-        if (this.wsConn.readyState != WebSocket.OPEN) {
-          restoreConn()
+          if (c.indexOf(name) == 0) {
+            const settingsString = c.substring(name.length, c.length);
+            const settings = JSON.parse(settingsString);
+            this.hideControls = settings.hideControls;
+            this.opacity = settings.opacity;
+            this.colors = settings.colors;
+            this.keyboardMappings = settings.keyboardMappings;
+            return;
+          }
         }
-      }
+      },
+      },
+      created() {
 
-      const originalWidth = 160
-      const originalHeight = 144
-      drawingCanvas.width = originalWidth
-      drawingCanvas.height = originalHeight
+      },
+      mounted() {
+        const drawingCanvas = document.createElement("canvas")
+        const canvas = document.getElementById("emulatorScreen")
+        const ctx = canvas.getContext("2d")
+        const drawingCtx = drawingCanvas.getContext("2d")
 
-      let drawScreen = async () => {
-        const unlock = await this.drawingCanvasLock.lock()
-        ctx.drawImage(drawingCanvas, 0, 0, canvas.width, canvas.height)
-        unlock()
-        window.requestAnimationFrame(drawScreen)
-      }
-      window.requestAnimationFrame(drawScreen)
+        this.loadSettingsFromCookie()
+        canvas.style.height = this.hideControls ? "100vh" : "auto"
 
-      let drawPixel = (x, y, color) => {
-        const newColor = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${color[3]})`
-        drawingCtx.fillStyle = newColor
-        drawingCtx.fillRect(x, y, 1, 1)
-      }
+        let restoreConn = event => {
+          setTimeout(() => {
+            if (document.hasFocus && !this.wsConn || this.wsConn.readyState == 3) {
+              this.wsConn = new WebSocket("{{.WebSocketUrl}}")
+              this.wsConn.onmessage = receiveBitmap
+              this.wsConn.onclose = restoreConn
+            }
+          }, "3000");
+        }
 
-      let receiveBitmap = event => {
-        event.data.arrayBuffer().then(async buf => {
+        this.wsConn.onclose = restoreConn
+
+        document.onfocus = () => {
+          if (this.wsConn.readyState != WebSocket.OPEN) {
+            restoreConn()
+          }
+        }
+
+        const originalWidth = 160
+        const originalHeight = 144
+        drawingCanvas.width = originalWidth
+        drawingCanvas.height = originalHeight
+
+        let drawScreen = async () => {
           const unlock = await this.drawingCanvasLock.lock()
-          let data = new Uint8Array(buf)
-          let dataIndex = 0
-          let shiftData = () => {
-            let r = data[0]
-            data = data.subarray(1)
-            return r
-          }
-          const difMode = shiftData() == 0xFB
-          if (!difMode) {
-            drawingCtx.clearRect(0, 0, canvas.width, canvas.height)
-          }
-          let x = 0
-          let y = 0
-          while (data.length > 0) {
-            const op = shiftData()
-            if (op > 0x03 && op < 0xA5) {
-              //vertical line index
-              x = op - 4
-              y = 0
-            }
-            else if (op == 0xF0) {
-              do {
-                let pixel = shiftData()
-                if (pixel != 0xFF) drawPixel(x, y, this.colors[pixel])
-                y++
-              } while (data[0] < 0x04 || data[0] == 0xFF)
-            }
-            else if (op == 0xF1) {
-              do {
-                let pixel = shiftData()
-                if (pixel < 0x04) {
-                  drawPixel(x, y, this.colors[pixel])
-                  y++
-                }
-                else if (pixel == 0xFF) {
-                  y++
-                }
-                else if (pixel == 0xF2) {
-                  //repeat byte XX times
-                  let rcount = shiftData()
-                  let rpixel = shiftData()
-                  for (let i = 0; i <= rcount; i++) {
-                    if (rpixel != 0xFF) drawPixel(x, y, this.colors[rpixel])
-                    y++
-                  }
-                }
-                else if (pixel > 0xC0 && pixel < 0xD0) {
-                  //repeat byte X times
-                  let rcount = pixel - 0xC0
-                  let rpixel = shiftData()
-                  for (let i = 0; i <= rcount; i++) {
-                    if (rpixel != 0xFF) drawPixel(x, y, this.colors[rpixel])
-                    y++
-                  }
-                }
-                else if (pixel == 0xFD) {
-                  let rpixel = shiftData()
-                  for (; y < 144; y++) {
-                    if (rpixel != 0xFF) drawPixel(x, y, this.colors[rpixel])
-                  }
-                }
-              } while (data[0] < 0x04 || data[0] > 0xA4)
-            }
-            else if (op == 0xFE) {
-              continue
-            }
-          }
+          ctx.drawImage(drawingCanvas, 0, 0, canvas.width, canvas.height)
           unlock()
+          window.requestAnimationFrame(drawScreen)
+        }
+        window.requestAnimationFrame(drawScreen)
+
+        let drawPixel = (x, y, color) => {
+          const newColor = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${color[3]})`
+          drawingCtx.fillStyle = newColor
+          drawingCtx.fillRect(x, y, 1, 1)
+        }
+
+        let receiveBitmap = event => {
+          event.data.arrayBuffer().then(async buf => {
+            const unlock = await this.drawingCanvasLock.lock()
+            let data = new Uint8Array(buf)
+            let dataIndex = 0
+            let shiftData = () => {
+              let r = data[0]
+              data = data.subarray(1)
+              return r
+            }
+            const difMode = shiftData() == 0xFB
+            if (!difMode) {
+              drawingCtx.clearRect(0, 0, canvas.width, canvas.height)
+            }
+            let x = 0
+            let y = 0
+            while (data.length > 0) {
+              const op = shiftData()
+              if (op > 0x03 && op < 0xA5) {
+                //vertical line index
+                x = op - 4
+                y = 0
+              }
+              else if (op == 0xF0) {
+                do {
+                  let pixel = shiftData()
+                  if (pixel != 0xFF) drawPixel(x, y, this.colors[pixel])
+                  y++
+                } while (data[0] < 0x04 || data[0] == 0xFF)
+              }
+              else if (op == 0xF1) {
+                do {
+                  let pixel = shiftData()
+                  if (pixel < 0x04) {
+                    drawPixel(x, y, this.colors[pixel])
+                    y++
+                  }
+                  else if (pixel == 0xFF) {
+                    y++
+                  }
+                  else if (pixel == 0xF2) {
+                    //repeat byte XX times
+                    let rcount = shiftData()
+                    let rpixel = shiftData()
+                    for (let i = 0; i <= rcount; i++) {
+                      if (rpixel != 0xFF) drawPixel(x, y, this.colors[rpixel])
+                      y++
+                    }
+                  }
+                  else if (pixel > 0xC0 && pixel < 0xD0) {
+                    //repeat byte X times
+                    let rcount = pixel - 0xC0
+                    let rpixel = shiftData()
+                    for (let i = 0; i <= rcount; i++) {
+                      if (rpixel != 0xFF) drawPixel(x, y, this.colors[rpixel])
+                      y++
+                    }
+                  }
+                  else if (pixel == 0xFD) {
+                    let rpixel = shiftData()
+                    for (; y < 144; y++) {
+                      if (rpixel != 0xFF) drawPixel(x, y, this.colors[rpixel])
+                    }
+                  }
+                } while (data[0] < 0x04 || data[0] > 0xA4)
+              }
+              else if (op == 0xFE) {
+                continue
+              }
+            }
+            unlock()
+          })
+        }
+
+        this.wsConn.onmessage = receiveBitmap
+
+        window.addEventListener("keydown", this.pressKey.bind(this))
+        window.addEventListener("keyup", this.releaseKey.bind(this))
+        canvas.width = originalWidth;
+        canvas.height = originalHeight;
+
+        this.wsConn.addEventListener("open", event => {
+          let clearBit = (byte, bit) => {
+            return byte & ~(1 << bit);
+          }
+          window.setInterval(async () => {
+            let input = 0xFF
+            const unlock = await this.inputLock.lock()
+            for (const [key, val] of Object.entries(this.pressedKeys)) {
+              if (val === true) {
+                if (key > 3 || (this.dpadPointerDown || this.dpadKeyDown)) input = clearBit(input, key)
+              }
+            }
+            unlock()
+            if (input != 0xFF || input != this.lastInput) {
+              let buf = new ArrayBuffer(1)
+              const v = new DataView(buf)
+              v.setUint8(0, input)
+              this.wsConn.send(buf)
+            }
+            this.lastInput = input
+          }, 100)
+        })
+
+        let preventZoom = function (e) {
+          var t2 = e.timeStamp;
+          var t1 = e.currentTarget.dataset.lastTouch || t2;
+          var dt = t2 - t1;
+          var fingers = e.touches.length;
+          e.currentTarget.dataset.lastTouch = t2;
+
+          if (!dt || dt > 500 || fingers > 1) return; // not double-tap
+
+          e.preventDefault();
+          e.target.click();
+        }
+
+        Object.entries(document.getElementsByClassName("onScreenInput")).forEach(arr => {
+          let btn = arr[1]
+          btn.addEventListener('touchstart', preventZoom)
         })
       }
-
-      this.wsConn.onmessage = receiveBitmap
-
-      window.addEventListener("keydown", this.pressKey.bind(this))
-      window.addEventListener("keyup", this.releaseKey.bind(this))
-      canvas.width = originalWidth;
-      canvas.height = originalHeight;
-
-      this.wsConn.addEventListener("open", event => {
-        let clearBit = (byte, bit) => {
-          return byte & ~(1 << bit);
-        }
-        window.setInterval(async () => {
-          let input = 0xFF
-          const unlock = await this.inputLock.lock()
-          for (const [key, val] of Object.entries(this.pressedKeys)) {
-            if (val === true) {
-              if (key > 3 || (this.dpadPointerDown || this.dpadKeyDown)) input = clearBit(input, key)
-            }
-          }
-          unlock()
-          if (input != 0xFF || input != this.lastInput) {
-            let buf = new ArrayBuffer(1)
-            const v = new DataView(buf)
-            v.setUint8(0, input)
-            this.wsConn.send(buf)
-          }
-          this.lastInput = input
-        }, 100)
-      })
-
-      let preventZoom = function (e) {
-        var t2 = e.timeStamp;
-        var t1 = e.currentTarget.dataset.lastTouch || t2;
-        var dt = t2 - t1;
-        var fingers = e.touches.length;
-        e.currentTarget.dataset.lastTouch = t2;
-
-        if (!dt || dt > 500 || fingers > 1) return; // not double-tap
-
-        e.preventDefault();
-        e.target.click();
-      }
-
-      Object.entries(document.getElementsByClassName("onScreenInput")).forEach(arr => {
-        let btn = arr[1]
-        btn.addEventListener('touchstart', preventZoom)
-      })
-    }
-  }).$mount('#app')
+    }).$mount('#app')
 </script>
 </body>
 
@@ -540,6 +773,23 @@
     user-select: none;
     outline: none;
     overflow: hidden;
+  }
+
+  #btn-settings {
+    display: block;
+    height: 5vh;
+  }
+
+  .settings-menu {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: #fff;
+    color: #000;
+    padding: 20px;
+    border-radius: 10px;
+    z-index: 10;
   }
 </style>
 
