@@ -1,7 +1,5 @@
 <!DOCTYPE html>
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black">
-<meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name='viewport' content='viewport-fit=cover, width=device-width, initial-scale=1.0, maximum-scale=1.0'>
 <html>
@@ -773,6 +771,8 @@
     user-select: none;
     outline: none;
     overflow: hidden;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);  
   }
 
   #btn-settings {
@@ -790,6 +790,9 @@
     padding: 20px;
     border-radius: 10px;
     z-index: 10;
+    max-height: 80vh;
+  overflow-y: auto;
+  width: auto;
   }
 </style>
 
