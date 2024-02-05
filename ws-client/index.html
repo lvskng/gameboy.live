@@ -385,6 +385,7 @@
         }
       },
       async pressKey(event) {
+        event.preventDefault();
         if (event.code == "F3") {
           var dataURL = document.getElementById("emulatorScreen").toDataURL("image/png");
           var newTab = window.open('about:blank', 'image from canvas');
@@ -512,185 +513,185 @@
           }
         }
       },
-      },
-      created() {
+    },
+    created() {
 
-      },
-      mounted() {
-        const drawingCanvas = document.createElement("canvas")
-        const canvas = document.getElementById("emulatorScreen")
-        const ctx = canvas.getContext("2d")
-        const drawingCtx = drawingCanvas.getContext("2d")
+    },
+    mounted() {
+      const drawingCanvas = document.createElement("canvas")
+      const canvas = document.getElementById("emulatorScreen")
+      const ctx = canvas.getContext("2d")
+      const drawingCtx = drawingCanvas.getContext("2d")
 
-        this.loadSettingsFromCookie()
-        canvas.style.height = this.hideControls ? "100vh" : "auto"
+      this.loadSettingsFromCookie()
+      canvas.style.height = this.hideControls ? "100vh" : "auto"
 
-        let restoreConn = event => {
-          setTimeout(() => {
-            if (document.hasFocus && !this.wsConn || this.wsConn.readyState == 3) {
-              this.wsConn = new WebSocket("{{.WebSocketUrl}}")
-              this.wsConn.onmessage = receiveBitmap
-              this.wsConn.onclose = restoreConn
-            }
-          }, "3000");
-        }
-
-        this.wsConn.onclose = restoreConn
-
-        document.onfocus = () => {
-          if (this.wsConn.readyState != WebSocket.OPEN) {
-            restoreConn()
+      let restoreConn = event => {
+        setTimeout(() => {
+          if (document.hasFocus && !this.wsConn || this.wsConn.readyState == 3) {
+            this.wsConn = new WebSocket("{{.WebSocketUrl}}")
+            this.wsConn.onmessage = receiveBitmap
+            this.wsConn.onclose = restoreConn
           }
-        }
+        }, "3000");
+      }
 
-        const originalWidth = 160
-        const originalHeight = 144
-        drawingCanvas.width = originalWidth
-        drawingCanvas.height = originalHeight
+      this.wsConn.onclose = restoreConn
 
-        let drawScreen = async () => {
-          const unlock = await this.drawingCanvasLock.lock()
-          ctx.drawImage(drawingCanvas, 0, 0, canvas.width, canvas.height)
-          unlock()
-          window.requestAnimationFrame(drawScreen)
+      document.onfocus = () => {
+        if (this.wsConn.readyState != WebSocket.OPEN) {
+          restoreConn()
         }
+      }
+
+      const originalWidth = 160
+      const originalHeight = 144
+      drawingCanvas.width = originalWidth
+      drawingCanvas.height = originalHeight
+
+      let drawScreen = async () => {
+        const unlock = await this.drawingCanvasLock.lock()
+        ctx.drawImage(drawingCanvas, 0, 0, canvas.width, canvas.height)
+        unlock()
         window.requestAnimationFrame(drawScreen)
+      }
+      window.requestAnimationFrame(drawScreen)
 
-        let drawPixel = (x, y, color) => {
-          const newColor = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${color[3]})`
-          drawingCtx.fillStyle = newColor
-          drawingCtx.fillRect(x, y, 1, 1)
-        }
+      let drawPixel = (x, y, color) => {
+        const newColor = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${color[3]})`
+        drawingCtx.fillStyle = newColor
+        drawingCtx.fillRect(x, y, 1, 1)
+      }
 
-        let receiveBitmap = event => {
-          event.data.arrayBuffer().then(async buf => {
-            const unlock = await this.drawingCanvasLock.lock()
-            let data = new Uint8Array(buf)
-            let dataIndex = 0
-            let shiftData = () => {
-              let r = data[0]
-              data = data.subarray(1)
-              return r
-            }
-            const difMode = shiftData() == 0xFB
-            if (!difMode) {
-              drawingCtx.clearRect(0, 0, canvas.width, canvas.height)
-            }
-            let x = 0
-            let y = 0
-            while (data.length > 0) {
-              const op = shiftData()
-              if (op > 0x03 && op < 0xA5) {
-                //vertical line index
-                x = op - 4
-                y = 0
-              }
-              else if (op == 0xF0) {
-                do {
-                  let pixel = shiftData()
-                  if (pixel != 0xFF) drawPixel(x, y, this.colors[pixel])
-                  y++
-                } while (data[0] < 0x04 || data[0] == 0xFF)
-              }
-              else if (op == 0xF1) {
-                do {
-                  let pixel = shiftData()
-                  if (pixel < 0x04) {
-                    drawPixel(x, y, this.colors[pixel])
-                    y++
-                  }
-                  else if (pixel == 0xFF) {
-                    y++
-                  }
-                  else if (pixel == 0xF2) {
-                    //repeat byte XX times
-                    let rcount = shiftData()
-                    let rpixel = shiftData()
-                    for (let i = 0; i <= rcount; i++) {
-                      if (rpixel != 0xFF) drawPixel(x, y, this.colors[rpixel])
-                      y++
-                    }
-                  }
-                  else if (pixel > 0xC0 && pixel < 0xD0) {
-                    //repeat byte X times
-                    let rcount = pixel - 0xC0
-                    let rpixel = shiftData()
-                    for (let i = 0; i <= rcount; i++) {
-                      if (rpixel != 0xFF) drawPixel(x, y, this.colors[rpixel])
-                      y++
-                    }
-                  }
-                  else if (pixel == 0xFD) {
-                    let rpixel = shiftData()
-                    for (; y < 144; y++) {
-                      if (rpixel != 0xFF) drawPixel(x, y, this.colors[rpixel])
-                    }
-                  }
-                } while (data[0] < 0x04 || data[0] > 0xA4)
-              }
-              else if (op == 0xFE) {
-                continue
-              }
-            }
-            unlock()
-          })
-        }
-
-        this.wsConn.onmessage = receiveBitmap
-
-        window.addEventListener("keydown", this.pressKey.bind(this))
-        window.addEventListener("keyup", this.releaseKey.bind(this))
-        canvas.width = originalWidth;
-        canvas.height = originalHeight;
-
-        this.wsConn.addEventListener("open", event => {
-          let clearBit = (byte, bit) => {
-            return byte & ~(1 << bit);
+      let receiveBitmap = event => {
+        event.data.arrayBuffer().then(async buf => {
+          const unlock = await this.drawingCanvasLock.lock()
+          let data = new Uint8Array(buf)
+          let dataIndex = 0
+          let shiftData = () => {
+            let r = data[0]
+            data = data.subarray(1)
+            return r
           }
-          window.setInterval(async () => {
-            let input = 0xFF
-            const unlock = await this.inputLock.lock()
-            for (const [key, val] of Object.entries(this.pressedKeys)) {
-              if (val === true) {
-                if (key > 3 || (this.dpadPointerDown || this.dpadKeyDown)) input = clearBit(input, key)
-              }
+          const difMode = shiftData() == 0xFB
+          if (!difMode) {
+            drawingCtx.clearRect(0, 0, canvas.width, canvas.height)
+          }
+          let x = 0
+          let y = 0
+          while (data.length > 0) {
+            const op = shiftData()
+            if (op > 0x03 && op < 0xA5) {
+              //vertical line index
+              x = op - 4
+              y = 0
             }
-            unlock()
-            if (input != 0xFF || input != this.lastInput) {
-              let buf = new ArrayBuffer(1)
-              const v = new DataView(buf)
-              v.setUint8(0, input)
-              this.wsConn.send(buf)
+            else if (op == 0xF0) {
+              do {
+                let pixel = shiftData()
+                if (pixel != 0xFF) drawPixel(x, y, this.colors[pixel])
+                y++
+              } while (data[0] < 0x04 || data[0] == 0xFF)
             }
-            this.lastInput = input
-          }, 100)
-        })
-
-        let preventZoom = function (e) {
-          var t2 = e.timeStamp;
-          var t1 = e.currentTarget.dataset.lastTouch || t2;
-          var dt = t2 - t1;
-          var fingers = e.touches.length;
-          e.currentTarget.dataset.lastTouch = t2;
-
-          if (!dt || dt > 500 || fingers > 1) return; // not double-tap
-
-          e.preventDefault();
-          e.target.click();
-        }
-
-        Object.entries(document.getElementsByClassName("onScreenInput")).forEach(arr => {
-          let btn = arr[1]
-          btn.addEventListener('touchstart', preventZoom)
+            else if (op == 0xF1) {
+              do {
+                let pixel = shiftData()
+                if (pixel < 0x04) {
+                  drawPixel(x, y, this.colors[pixel])
+                  y++
+                }
+                else if (pixel == 0xFF) {
+                  y++
+                }
+                else if (pixel == 0xF2) {
+                  //repeat byte XX times
+                  let rcount = shiftData()
+                  let rpixel = shiftData()
+                  for (let i = 0; i <= rcount; i++) {
+                    if (rpixel != 0xFF) drawPixel(x, y, this.colors[rpixel])
+                    y++
+                  }
+                }
+                else if (pixel > 0xC0 && pixel < 0xD0) {
+                  //repeat byte X times
+                  let rcount = pixel - 0xC0
+                  let rpixel = shiftData()
+                  for (let i = 0; i <= rcount; i++) {
+                    if (rpixel != 0xFF) drawPixel(x, y, this.colors[rpixel])
+                    y++
+                  }
+                }
+                else if (pixel == 0xFD) {
+                  let rpixel = shiftData()
+                  for (; y < 144; y++) {
+                    if (rpixel != 0xFF) drawPixel(x, y, this.colors[rpixel])
+                  }
+                }
+              } while (data[0] < 0x04 || data[0] > 0xA4)
+            }
+            else if (op == 0xFE) {
+              continue
+            }
+          }
+          unlock()
         })
       }
-    }).$mount('#app')
+
+      this.wsConn.onmessage = receiveBitmap
+
+      window.addEventListener("keydown", this.pressKey.bind(this))
+      window.addEventListener("keyup", this.releaseKey.bind(this))
+      canvas.width = originalWidth;
+      canvas.height = originalHeight;
+
+      this.wsConn.addEventListener("open", event => {
+        let clearBit = (byte, bit) => {
+          return byte & ~(1 << bit);
+        }
+        window.setInterval(async () => {
+          let input = 0xFF
+          const unlock = await this.inputLock.lock()
+          for (const [key, val] of Object.entries(this.pressedKeys)) {
+            if (val === true) {
+              if (key > 3 || (this.dpadPointerDown || this.dpadKeyDown)) input = clearBit(input, key)
+            }
+          }
+          unlock()
+          if (input != 0xFF || input != this.lastInput) {
+            let buf = new ArrayBuffer(1)
+            const v = new DataView(buf)
+            v.setUint8(0, input)
+            this.wsConn.send(buf)
+          }
+          this.lastInput = input
+        }, 100)
+      })
+
+      let preventZoom = function (e) {
+        var t2 = e.timeStamp;
+        var t1 = e.currentTarget.dataset.lastTouch || t2;
+        var dt = t2 - t1;
+        var fingers = e.touches.length;
+        e.currentTarget.dataset.lastTouch = t2;
+
+        if (!dt || dt > 500 || fingers > 1) return; // not double-tap
+
+        e.preventDefault();
+        e.target.click();
+      }
+
+      Object.entries(document.getElementsByClassName("onScreenInput")).forEach(arr => {
+        let btn = arr[1]
+        btn.addEventListener('touchstart', preventZoom)
+      })
+    }
+  }).$mount('#app')
 </script>
 </body>
 
 <style>
   #emulator {
-    height: 100vh;
+    height: 100%;
     display: inline-block;
   }
 
@@ -720,7 +721,7 @@
 
   .btn-a,
   .btn-b {
-    height: 10vh;
+    height: 10svh;
   }
 
   .btn-a {
@@ -733,7 +734,7 @@
 
   .btn-start,
   .btn-select {
-    height: 3vh;
+    height: 3svh;
   }
 
   .btn-start {
@@ -746,7 +747,7 @@
 
   #dpad {
     grid-area: dpad;
-    height: 20vh;
+    height: 20svh;
   }
 
   body,
@@ -754,14 +755,11 @@
     margin: 0;
     background-color: black;
     -webkit-user-select: none;
-    /* Safari */
     -ms-user-select: none;
-    /* IE 10 and IE 11 */
-    height: 100vh;
-    overflow: hidden;
-    /* Prevent scrolling */
+    height: calc(100% - env(safe-area-inset-top) - env(safe-area-inset-bottom)) !important;
+    max-height: 100svh !important;
+    overflow: clip !important;
     touch-action: none;
-    /* Disable zooming and long press events */
     display: flex;
     justify-content: center;
     align-items: center;
@@ -770,14 +768,9 @@
     -moz-user-select: none;
     user-select: none;
     outline: none;
-    overflow: hidden;
     padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);  
-  }
-
-  #btn-settings {
-    display: block;
-    height: 5vh;
+    padding-bottom: env(safe-area-inset-bottom);
+    overscroll-behavior: none !important;
   }
 
   .settings-menu {
@@ -790,9 +783,10 @@
     padding: 20px;
     border-radius: 10px;
     z-index: 10;
-    max-height: 80vh;
-  overflow-y: auto;
-  width: auto;
+    max-height: 80svh;
+    overflow: scroll;
+    width: auto;
+    overscroll-behavior: contain !important;
   }
 </style>
 
