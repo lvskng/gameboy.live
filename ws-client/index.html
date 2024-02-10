@@ -612,9 +612,9 @@
                     y++
                   }
                 }
-                else if (pixel > 0xC0 && pixel < 0xD0) {
+                else if (pixel > 0xD0 && pixel < 0xE0) {
                   //repeat byte X times
-                  let rcount = pixel - 0xC0
+                  let rcount = pixel - 0xD0
                   let rpixel = shiftData()
                   for (let i = 0; i <= rcount; i++) {
                     if (rpixel != 0xFF) drawPixel(x, y, this.colors[rpixel])

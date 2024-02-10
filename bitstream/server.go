@@ -19,7 +19,7 @@ import (
 	"nhooyr.io/websocket"
 )
 
-type BitstreamServer struct {
+type Server struct {
 	Core *gb.Core
 
 	pixels    *[160][144]uint8
@@ -63,12 +63,6 @@ type BitstreamServerConfig struct {
 	} `yaml:"rate_limit,omitempty"`
 }
 
-type pixelCluster struct {
-	pixel    byte
-	repindex uint8
-	repcount uint8
-}
-
 type PageData struct {
 	ServerURL    string
 	GameName     string
@@ -84,12 +78,12 @@ type Connection struct {
 	closed    *bool
 }
 
-func (s *BitstreamServer) Run(sig chan bool, f func()) {
+func (s *Server) Run(sig chan bool, f func()) {
 	panic("implement me")
 }
 
 // Run Running the static-image gaming server
-func (s *BitstreamServer) InitServer() {
+func (s *Server) InitServer() {
 	// startup the emulator
 	core := &gb.Core{
 		FPS:           60,
@@ -155,11 +149,14 @@ func (s *BitstreamServer) InitServer() {
 	})
 	go s.serveData()
 	go s.handleInput()
-	http.ListenAndServe(fmt.Sprintf(":%d", s.Config.Port), nil)
+	err := http.ListenAndServe(fmt.Sprintf(":%d", s.Config.Port), nil)
+	if err != nil {
+		log.Fatalf("Error creating webserver: %+v", err)
+	}
 	select {}
 }
 
-func (s *BitstreamServer) handleSubscribe(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 	id := uuid.New().String()
 	ipAddr := r.Header.Get("X-Real-Ip")
 	if ipAddr == "" {
@@ -183,7 +180,7 @@ func (s *BitstreamServer) handleSubscribe(w http.ResponseWriter, r *http.Request
 	}
 }
 
-func (s *BitstreamServer) subscribe(ctx context.Context, w http.ResponseWriter, r *http.Request, id string) error {
+func (s *Server) subscribe(ctx context.Context, w http.ResponseWriter, r *http.Request, id string) error {
 	var c *websocket.Conn
 	mu := sync.Mutex{}
 	var closed bool = false
@@ -192,10 +189,7 @@ func (s *BitstreamServer) subscribe(ctx context.Context, w http.ResponseWriter, 
 		return err
 	}
 	mu.Lock()
-	if closed {
-		mu.Unlock()
-		return net.ErrClosed
-	}
+
 	c = c2
 	conn := &Connection{
 		c:      c,
@@ -206,17 +200,31 @@ func (s *BitstreamServer) subscribe(ctx context.Context, w http.ResponseWriter, 
 			mu.Lock()
 			closed = true
 			if c != nil {
-				c.Close(websocket.StatusPolicyViolation, "connection too slow")
+				err := c.Close(websocket.StatusPolicyViolation, "connection too slow")
+				if err != nil {
+					log.Printf("[Bitstream] Error closing WebScoket connection: %+v", err)
+					return
+				}
 				mu.Unlock()
 				s.DropConnection(id)
 			}
 		},
 	}
 
+	if closed {
+		mu.Unlock()
+		return net.ErrClosed
+	}
+
 	s.addConnection(conn, id)
 	defer conn.closeSlow()
 	mu.Unlock()
-	defer c.CloseNow()
+	defer func(c *websocket.Conn) {
+		err := c.CloseNow()
+		if err != nil {
+			fmt.Printf("[Bitstream] Error closing WebScoket connection: %+v", err)
+		}
+	}(c)
 
 	go func() {
 		for {
@@ -263,7 +271,7 @@ func (s *BitstreamServer) subscribe(ctx context.Context, w http.ResponseWriter, 
 
 }
 
-func (s *BitstreamServer) addConnection(conn *Connection, id string) {
+func (s *Server) addConnection(conn *Connection, id string) {
 	s.connectionsLock.Lock()
 	s.inputLock.Lock()
 	defer s.connectionsLock.Unlock()
@@ -272,11 +280,11 @@ func (s *BitstreamServer) addConnection(conn *Connection, id string) {
 	s.inputs[id] = 0xFF
 }
 
-func (s *BitstreamServer) Init(px *[160][144]uint8, str string) {
+func (s *Server) Init(px *[160][144]uint8, str string) {
 	s.pixels = px
 }
 
-func (s *BitstreamServer) InitRGB(px *[160][144][3]uint8, str string) {
+func (s *Server) InitRGB(px *[160][144][3]uint8, str string) {
 	// s.pixelsRGB = px
 	panic("implement me")
 }
@@ -286,234 +294,12 @@ func writeTimeout(ctx context.Context, timeout time.Duration, conn *Connection, 
 	defer cancel()
 	closed := *conn.closed
 	if closed {
-		return errors.New("Connection is closed")
+		return errors.New("connection is closed")
 	}
 	return conn.c.Write(ctx, websocket.MessageBinary, msg)
 }
 
-func (s *BitstreamServer) GetBitmap() ([][]byte, [160][144]byte) {
-	s.pixelLock.RLock()
-	screen := *s.pixels
-	s.pixelLock.RUnlock()
-	var retscreen [][]byte
-	for linenum, line := range screen {
-		lineClusters := getLineClusters(line[:])
-		compressedLine := compressLine(line[:], lineClusters)
-		retscreen = append(retscreen, append([]byte{byte(linenum) + 0x04}, compressedLine...))
-	}
-	return retscreen, screen
-}
-
-func (s *BitstreamServer) GetBitmapDelta(lastBitmap [160][144]byte) ([][]byte, [160][144]byte) {
-	s.pixelLock.RLock()
-	screen := *s.pixels
-	s.pixelLock.RUnlock()
-	var difscreen [][]byte
-	for linenum, line := range screen {
-		compressedDifline := []byte{byte(linenum) + 0x04}
-		var difline []byte
-		lastLine := lastBitmap[linenum]
-
-		//replace equal values with 0xFF
-		if line == lastLine {
-			continue
-		}
-		for index, pixel := range line {
-			if pixel == lastLine[index] {
-				difline = append(difline, 0xFF)
-			} else {
-				difline = append(difline, pixel)
-			}
-		}
-		//clustering
-		clusters := getLineClusters(difline)
-		compressedDifline = append(compressedDifline, compressLine(difline, clusters)...)
-		//line compression validation for debug purposes
-		// shift := func(slc []byte) (byte, []byte) {
-		// 	if len(slc) == 1 {
-		// 		return slc[0], []byte{}
-		// 	}
-		// 	return slc[0], slc[1:]
-		// }
-		// data := compressedDifline
-		// var b byte
-		// if b, data = shift(data); b != 0xFB {
-		// 	//nop
-		// }
-		// y := 0
-		// lastline := lastBitmap[linenum]
-		// for len(data) > 0 {
-		// 	var op byte
-		// 	op, data = shift(data)
-		// 	if op > 0x03 && op < 0xA5 {
-		// 		y = 0
-		// 	} else if op == 0xF0 {
-		// 		for len(data) > 0 && (data[0] < 0x04 || data[0] == 0xFF) {
-		// 			var pixel byte
-		// 			pixel, data = shift(data)
-		// 			if pixel != 0xFF {
-		// 				lastline[y] = pixel
-		// 			}
-		// 		}
-		// 	} else if op == 0xF1 {
-		// 		for len(data) > 0 && (data[0] < 0x04 || data[0] > 0xA4) {
-		// 			b, data = shift(data)
-		// 			if b < 0x04 {
-		// 				lastline[y] = b
-		// 				y++
-		// 			} else if b == 0xFF {
-		// 				y++
-		// 			} else if b == 0xF2 {
-		// 				var rcount byte
-		// 				var rpx byte
-		// 				rcount, data = shift(data)
-		// 				rpx, data = shift(data)
-		// 				for i := 0; i <= int(rcount); i++ {
-		// 					if rpx != 0xFF {
-		// 						lastline[y] = rpx
-		// 					}
-		// 					y++
-		// 				}
-		// 			} else if b > 0xC0 && b < 0xD0 {
-		// 				var rpx byte
-		// 				rcount := b - 0xC0
-		// 				rpx, data = shift(data)
-		// 				for i := 0; i <= int(rcount); i++ {
-		// 					if rpx != 0xFF {
-		// 						lastline[y] = rpx
-		// 					}
-		// 					y++
-		// 				}
-		// 			} else if b == 0xFD {
-		// 				var rpx byte
-		// 				rpx, data = shift(data)
-		// 				for ; y < 144; y++ {
-		// 					if rpx != 0xFF {
-		// 						lastline[y] = rpx
-		// 					}
-		// 				}
-		// 			}
-		// 		}
-		// 	} else if op == 0xFE {
-		// 		continue
-		// 	}
-		// }
-		// var pixels [][3]int
-		// if lastline != line {
-		// 	for n, p := range line {
-		// 		if lastline[n] != p { //pos ex act
-		// 			pixels = append(pixels, [3]int{n, int(p), int(lastline[n])})
-		// 		}
-		// 	}
-		// }
-		difscreen = append(difscreen, compressedDifline)
-	}
-	return difscreen, screen
-}
-
-// get repeating sections of a line for compression
-func getLineClusters(line []byte) []pixelCluster {
-	clusters := []pixelCluster{}
-	var lastpixel byte
-	var repcount uint8
-	var repindex uint8
-	for index, pixel := range line {
-		if index == 0 {
-			lastpixel = pixel
-			continue
-		}
-		if repcount > 0 {
-			if lastpixel == pixel {
-				repcount++
-				if index == len(line)-1 {
-					if repcount > 1 {
-						clusters = append(clusters, pixelCluster{lastpixel, repindex, repcount})
-					}
-				}
-			} else {
-				if repcount > 1 {
-					clusters = append(clusters, pixelCluster{lastpixel, repindex, repcount})
-				}
-				repcount = 0
-				lastpixel = pixel
-			}
-		} else {
-			if lastpixel == pixel {
-				repindex = uint8(index - 1) //-1 because the cluster starts at the first equal int
-				repcount = 1
-			} else {
-				lastpixel = pixel
-			}
-		}
-	}
-	return clusters
-}
-
-func shiftPc(clusters []pixelCluster) (pixelCluster, []pixelCluster) {
-	c := clusters[0]
-	return c, clusters[1:]
-}
-
-// Compresses a display line by eliminating clusters with a repeat declaration
-// 0x00 - 0x03 regular pixel color value
-// 0xFF no change in pixel value since last image
-// 0x04 - 0xA3 line identifier
-// 0xCx repeat the following byte x times
-// 0xF0 start regular line without compression
-// 0xF1 start compressed line
-// 0xF2 0xXX repeat the following byte XX times
-// 0xFD repeat until end of line
-// 0xFE ignore line
-// 0xEE internally used to mark array elements that are to be removed
-func compressLine(origLine []byte, cl []pixelCluster) []byte {
-	line := make([]byte, len(origLine))
-	copy(line, origLine)
-
-	var cline []byte
-	if len(cl) == 0 {
-		return append([]byte{0xF0}, line...)
-	}
-
-	cline = make([]byte, 1, len(line)/2)
-	cline[0] = 0xF1
-
-	var cluster pixelCluster
-	clusters := cl
-	hasClusters := len(clusters) > 0
-	if !hasClusters {
-		return append([]byte{0xF0}, line...)
-	}
-	for len(clusters) > 0 {
-		cluster, clusters = shiftPc(clusters)
-		i := cluster.repindex
-		clend := i + cluster.repcount
-		if clend >= 143 {
-			line[i] = 0xFD
-			i += 2
-		} else if cluster.repcount < 16 {
-			line[i] = 0xC0 + cluster.repcount
-			i += 2
-		} else {
-			line[i] = 0xF2
-			i++
-			line[i] = cluster.repcount
-			i += 2
-		}
-		for ; i <= clend; i++ {
-			line[i] = 0xEE //trim
-		}
-		cline = []byte{0xF1}
-	}
-	for _, px := range line {
-		if px != 0xEE {
-			cline = append(cline, px)
-		}
-	}
-
-	return cline
-}
-
-func (s *BitstreamServer) serveData() {
+func (s *Server) serveData() {
 	var bitmap [][]byte
 	var lastBitmap [160][144]byte
 	ticker := time.NewTicker(time.Duration(s.Config.FullPictureInterval) * time.Millisecond)
@@ -532,7 +318,10 @@ func (s *BitstreamServer) serveData() {
 					}
 					go func() {
 						for _, c := range s.connections {
-							s.rateLimiter.Wait(context.Background())
+							err := s.rateLimiter.Wait(context.Background())
+							if err != nil {
+								log.Printf("Error in waiting for rate limiter: %+v", err)
+							}
 							select {
 							case c.m <- msg:
 							default:
@@ -555,7 +344,10 @@ func (s *BitstreamServer) serveData() {
 					if !empty && len(msg) > 1 {
 						go func() {
 							for _, c := range s.connections {
-								s.rateLimiter.Wait(context.Background())
+								err := s.rateLimiter.Wait(context.Background())
+								if err != nil {
+									log.Printf("Error in waiting for rate limiter: %+v", err)
+								}
 								select {
 								case c.m <- msg:
 								default:
@@ -587,7 +379,7 @@ func (s *BitstreamServer) serveData() {
 	}
 }
 
-func (s *BitstreamServer) handleInput() {
+func (s *Server) handleInput() {
 	for input := range s.inputChannel {
 		s.inputLock.Lock()
 		s.inputs[input.id] = input.msg[0]
@@ -595,12 +387,12 @@ func (s *BitstreamServer) handleInput() {
 	}
 }
 
-func (s *BitstreamServer) InitStatus(b *byte) {
+func (s *Server) InitStatus(b *byte) {
 	s.inputStatus = b
 	s.lastInput = 0xFF //All buttons released
 }
 
-func (s *BitstreamServer) UpdateInput() bool {
+func (s *Server) UpdateInput() bool {
 	s.inputLock.Lock()
 	defer s.inputLock.Unlock()
 	if len(s.inputs) == 0 {
@@ -610,12 +402,12 @@ func (s *BitstreamServer) UpdateInput() bool {
 	for _, usrStatus := range s.inputs {
 		poll[usrStatus]++
 	}
-	var max int
+	var mostVoted int
 	var winner byte
-	for usrStatus, freq := range poll {
-		if freq > max {
+	for usrStatus, frequency := range poll {
+		if frequency > mostVoted {
 			winner = usrStatus
-			max = freq
+			mostVoted = frequency
 		}
 	}
 	s.inputs = make(map[string]byte)
@@ -623,7 +415,7 @@ func (s *BitstreamServer) UpdateInput() bool {
 	return true
 }
 
-func (s *BitstreamServer) DropConnection(id string) {
+func (s *Server) DropConnection(id string) {
 	log.Printf("[Bitstream] Dropping connection with ID: %s", id)
 	s.connectionsLock.Lock()
 	s.inputLock.Lock()
@@ -633,116 +425,6 @@ func (s *BitstreamServer) DropConnection(id string) {
 	delete(s.inputs, id)
 }
 
-func (s *BitstreamServer) NewInput([]byte) {
+func (s *Server) NewInput([]byte) {
 	panic("implement me")
 }
-
-// validates a delta screen for debug purposes
-// func validateDif(difbmp []byte, lastBitmap, orbitmap [160][144]byte) bool {
-// 	shift := func(slc []byte) (byte, []byte) {
-// 		if len(slc) == 1 {
-// 			return slc[0], []byte{}
-// 		}
-// 		return slc[0], slc[1:]
-// 	}
-// 	data := difbmp
-// 	var b byte
-// 	if b, data = shift(data); b != 0xFB {
-// 		return false
-// 	}
-// 	x := 0
-// 	y := 0
-// 	for len(data) > 0 {
-// 		var op byte
-// 		op, data = shift(data)
-// 		if op > 0x03 && op < 0xA5 {
-// 			x = int(op - 4)
-// 			y = 0
-// 		} else if op == 0xF0 {
-// 			for data[0] < 0x04 || data[0] == 0xFF {
-// 				var pixel byte
-// 				pixel, data = shift(data)
-// 				if pixel != 0xFF {
-// 					lastBitmap[x][y] = pixel
-// 				}
-// 			}
-// 		} else if op == 0xF1 {
-// 			for len(data) > 0 && (data[0] < 0x04 || data[0] > 0xA4) {
-// 				b, data = shift(data)
-// 				if b < 0x04 {
-// 					lastBitmap[x][y] = b
-// 					y++
-// 				} else if b == 0xFF {
-// 					y++
-// 				} else if b == 0xF2 {
-// 					var rcount byte
-// 					var rpx byte
-// 					rcount, data = shift(data)
-// 					rpx, data = shift(data)
-// 					for i := 0; i <= int(rcount); i++ {
-// 						if rpx != 0xFF {
-// 							lastBitmap[x][y] = rpx
-// 						}
-// 						y++
-// 					}
-// 				} else if b > 0xC0 && b < 0xD0 {
-// 					var rpx byte
-// 					rcount := b - 0xC0
-// 					rpx, data = shift(data)
-// 					for i := 0; i <= int(rcount); i++ {
-// 						if rpx != 0xFF {
-// 							lastBitmap[x][y] = rpx
-// 						}
-// 						y++
-// 					}
-// 				} else if b == 0xFD {
-// 					var rpx byte
-// 					rpx, data = shift(data)
-// 					for ; y < 143; y++ {
-// 						if rpx != 0xFF {
-// 							lastBitmap[x][y] = rpx
-// 						}
-// 					}
-// 				}
-// 			}
-// 		} else if op == 0xFE {
-// 			continue
-// 		}
-// 	}
-// 	var pixels [][4]byte
-// 	var lines []int
-// 	for i, line := range lastBitmap {
-// 		if line != orbitmap[i] {
-// 			for index, pixel := range line {
-// 				if pixel != orbitmap[i][index] { //line, pos, expected, is
-// 					pixels = append(pixels, [4]byte{byte(i), byte(index), orbitmap[i][index], pixel})
-// 				}
-// 			}
-// 			lines = append(lines, i)
-// 		}
-// 	}
-// 	var difstrings [][]byte
-// 	for _, linenum := range lines {
-// 		record := false
-// 		var lastb byte
-// 		var ds []byte
-// 		for _, b := range difbmp {
-// 			if b == byte(linenum+0x04) {
-// 				record = true
-// 			} else if (b > 0x03 && b < 0xA5) && (lastb != 0xF2) {
-// 				record = false
-// 			}
-// 			if record {
-// 				ds = append(ds, b)
-// 				lastb = b
-// 			}
-// 		}
-// 		if len(ds) > 0 {
-// 			difstrings = append(difstrings, ds)
-// 		}
-// 	}
-// 	// for _, d := range difstrings {
-// 	// 	log.Printf("difstrings for invalid lines: %s", d)
-// 	// }
-// 	return len(pixels) == 0
-// }
