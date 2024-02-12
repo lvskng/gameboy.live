@@ -46,6 +46,8 @@ type Server struct {
 		id  string
 		msg []byte
 	}
+
+	dropChannel chan string
 }
 
 type BitstreamServerConfig struct {
@@ -112,39 +114,45 @@ func (s *Server) InitServer() {
 		msg []byte
 	})
 	s.lastInput = 0xFF
+
+	s.dropChannel = make(chan string)
+	go s.dropConnections()
+
 	http.HandleFunc("/stream", s.handleSubscribe)
-	fs := http.FileServer(http.Dir("ws-client"))
+	fs := http.FileServer(http.Dir("ws-client/static"))
 	http.Handle("/static/", http.StripPrefix("/static/", fs))
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// Check if the request is for index.html
-		if strings.ToLower(r.URL.Path) == "/" || strings.ToLower(r.URL.Path) == "/index.html" {
-			// Parse the HTML template
-			tmpl, err := template.ParseFiles("ws-client/index.html")
-			if err != nil {
-				log.Fatal("Error parsing template:", err)
-				return
-			}
-			debugmin := "min."
-			if s.Debug {
-				debugmin = ""
-			}
+		req := strings.ToLower(r.URL.Path)
+		if req == "/" {
+			req += "index.html"
+		}
+		// Parse the HTML template
+		tmpl, err := template.ParseFiles("ws-client" + req)
+		if err != nil {
+			log.Printf("Error parsing template: %+v", err)
+			w.WriteHeader(404)
+			return
+		}
 
-			// Create page data with the server URL
-			data := PageData{
-				ServerURL:    s.Config.Url,
-				GameName:     core.GameTitle,
-				DebugMin:     debugmin,
-				WebSocketUrl: s.Config.WebSocketUrl,
-			}
-			w.Header().Add("Access-Control-Allow-Origin", s.Config.Url)
-			// Execute the template with the data and serve
-			err = tmpl.Execute(w, data)
-			if err != nil {
-				log.Fatal("Error executing template:", err)
-			}
-		} else {
-			// For other files, serve them normally
-			fs.ServeHTTP(w, r)
+		debugmin := "min."
+		if s.Debug {
+			debugmin = ""
+		}
+
+		// Create page data with the server URL
+		data := PageData{
+			ServerURL:    s.Config.Url,
+			GameName:     core.GameTitle,
+			DebugMin:     debugmin,
+			WebSocketUrl: s.Config.WebSocketUrl,
+		}
+		w.Header().Add("Access-Control-Allow-Origin", s.Config.Url)
+		// Execute the template with the data and serve
+		err = tmpl.Execute(w, data)
+		if err != nil {
+			log.Println("Error executing template:", err)
+			w.WriteHeader(500)
 		}
 	})
 	go s.serveData()
@@ -183,7 +191,7 @@ func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 func (s *Server) subscribe(ctx context.Context, w http.ResponseWriter, r *http.Request, id string) error {
 	var c *websocket.Conn
 	mu := sync.Mutex{}
-	var closed bool = false
+	var closed = false
 	c2, err := websocket.Accept(w, r, nil)
 	if err != nil {
 		return err
@@ -206,7 +214,7 @@ func (s *Server) subscribe(ctx context.Context, w http.ResponseWriter, r *http.R
 					return
 				}
 				mu.Unlock()
-				s.DropConnection(id)
+				s.dropChannel <- id
 			}
 		},
 	}
@@ -416,13 +424,36 @@ func (s *Server) UpdateInput() bool {
 }
 
 func (s *Server) DropConnection(id string) {
-	log.Printf("[Bitstream] Dropping connection with ID: %s", id)
-	s.connectionsLock.Lock()
-	s.inputLock.Lock()
-	defer s.connectionsLock.Unlock()
-	defer s.inputLock.Unlock()
-	delete(s.connections, id)
-	delete(s.inputs, id)
+	conn := s.connections[id]
+	if !*conn.closed {
+		log.Printf("[Bitstream] Dropping connection with ID: %s", id)
+		s.connectionsLock.Lock()
+		s.inputLock.Lock()
+		defer s.connectionsLock.Unlock()
+		defer s.inputLock.Unlock()
+		delete(s.connections, id)
+		delete(s.inputs, id)
+	}
+}
+
+// Goroutine to drop connections to avoid race conditions on connection closure
+func (s *Server) dropConnections() {
+	for id := range s.dropChannel {
+		log.Printf("[Bitstream] Dropping connection with ID %s", id)
+		s.connectionsLock.Lock()
+		s.inputLock.Lock()
+		conn, ok := s.connections[id]
+		if !ok {
+			log.Printf("[Bitstream] Cannot drop connection with ID %s: Connection doesn't exist", id)
+		} else if *conn.closed {
+			log.Printf("[Bitstream] Cannot drop connection with ID %s: Connection already marked as closed", id)
+		} else {
+			delete(s.connections, id)
+			delete(s.inputs, id)
+		}
+		s.connectionsLock.Unlock()
+		s.inputLock.Unlock()
+	}
 }
 
 func (s *Server) NewInput([]byte) {

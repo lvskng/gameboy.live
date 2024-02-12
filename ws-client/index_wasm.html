@@ -7,6 +7,7 @@
 <head>
   <title>{{.GameName}}</title>
   <script src="https://cdn.jsdelivr.net/npm/vue@2.6.12/dist/vue.{{.DebugMin}}js"></script>
+  <script src="static/wasm_exec.js"></script>
 </head>
 
 <body scroll="no">
@@ -171,7 +172,7 @@
     name: 'App',
     data: () => {
       return {
-        wsConn: new WebSocket("{{.WebSocketUrl}}"),
+        wsConn: null,
         input: '',
         currentBtnPress: '',
         lastButtonPress: '',
@@ -332,7 +333,7 @@
         }
       },
       toggleFullscreen(event) {
-        document.getElementById("emulatorScreen").style.height = event.srcElement.checked ? "100vh" : "auto"
+        document.getElementById("emulatorScreen").style.height = event.target.checked ? "100vh" : "auto"
       },
       getColors() {
         ret = []
@@ -518,154 +519,162 @@
 
     },
     mounted() {
-      const drawingCanvas = document.createElement("canvas")
       const canvas = document.getElementById("emulatorScreen")
-      const ctx = canvas.getContext("2d")
-      const drawingCtx = drawingCanvas.getContext("2d")
-
       this.loadSettingsFromCookie()
       canvas.style.height = this.hideControls ? "100vh" : "auto"
-
-      let restoreConn = event => {
-        setTimeout(() => {
-          if (document.hasFocus && !this.wsConn || this.wsConn.readyState == 3) {
-            this.wsConn = new WebSocket("{{.WebSocketUrl}}")
-            this.wsConn.onmessage = receiveBitmap
-            this.wsConn.onclose = restoreConn
-          }
-        }, "3000");
-      }
-
-      this.wsConn.onclose = restoreConn
-
-      document.onfocus = () => {
-        if (this.wsConn.readyState != WebSocket.OPEN) {
-          restoreConn()
+      canvas.height = 144
+      canvas.width = 160
+      if (!WebAssembly) {
+        this.wsConn = new WebSocket("{{.WebSocketUrl}}")
+        const drawingCanvas = document.createElement("canvas")
+        const ctx = canvas.getContext("2d")
+        const drawingCtx = drawingCanvas.getContext("2d")
+        let restoreConn = event => {
+          setTimeout(() => {
+            if (document.hasFocus && !this.wsConn || this.wsConn.readyState == 3) {
+              this.wsConn = new WebSocket("{{.WebSocketUrl}}")
+              this.wsConn.onmessage = receiveBitmap
+              this.wsConn.onclose = restoreConn
+            }
+          }, "3000");
         }
-      }
 
-      const originalWidth = 160
-      const originalHeight = 144
-      drawingCanvas.width = originalWidth
-      drawingCanvas.height = originalHeight
+        this.wsConn.onclose = restoreConn
 
-      let drawScreen = async () => {
-        const unlock = await this.drawingCanvasLock.lock()
-        ctx.drawImage(drawingCanvas, 0, 0, canvas.width, canvas.height)
-        unlock()
-        window.requestAnimationFrame(drawScreen)
-      }
-      window.requestAnimationFrame(drawScreen)
+        document.onfocus = () => {
+          if (this.wsConn.readyState != WebSocket.OPEN) {
+            restoreConn()
+          }
+        }
 
-      let drawPixel = (x, y, color) => {
-        const newColor = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${color[3]})`
-        drawingCtx.fillStyle = newColor
-        drawingCtx.fillRect(x, y, 1, 1)
-      }
+        const originalWidth = 160
+        const originalHeight = 144
+        drawingCanvas.width = originalWidth
+        drawingCanvas.height = originalHeight
 
-      let receiveBitmap = event => {
-        event.data.arrayBuffer().then(async buf => {
+        let drawScreen = async () => {
           const unlock = await this.drawingCanvasLock.lock()
-          let data = new Uint8Array(buf)
-          let dataIndex = 0
-          let shiftData = () => {
-            let r = data[0]
-            data = data.subarray(1)
-            return r
-          }
-          const difMode = shiftData() == 0xFB
-          if (!difMode) {
-            drawingCtx.clearRect(0, 0, canvas.width, canvas.height)
-          }
-          let x = 0
-          let y = 0
-          while (data.length > 0) {
-            const op = shiftData()
-            if (op > 0x03 && op < 0xA5) {
-              //vertical line index
-              x = op - 4
-              y = 0
-            }
-            else if (op == 0xF0) {
-              do {
-                let pixel = shiftData()
-                if (pixel != 0xFF) drawPixel(x, y, this.colors[pixel])
-                y++
-              } while (data[0] < 0x04 || data[0] == 0xFF)
-            }
-            else if (op == 0xF1) {
-              do {
-                let pixel = shiftData()
-                if (pixel < 0x04) {
-                  drawPixel(x, y, this.colors[pixel])
-                  y++
-                }
-                else if (pixel == 0xFF) {
-                  y++
-                }
-                else if (pixel == 0xF2) {
-                  //repeat byte XX times
-                  let rcount = shiftData()
-                  let rpixel = shiftData()
-                  for (let i = 0; i <= rcount; i++) {
-                    if (rpixel != 0xFF) drawPixel(x, y, this.colors[rpixel])
-                    y++
-                  }
-                }
-                else if (pixel > 0xD0 && pixel < 0xE0) {
-                  //repeat byte X times
-                  let rcount = pixel - 0xD0
-                  let rpixel = shiftData()
-                  for (let i = 0; i <= rcount; i++) {
-                    if (rpixel != 0xFF) drawPixel(x, y, this.colors[rpixel])
-                    y++
-                  }
-                }
-                else if (pixel == 0xFD) {
-                  let rpixel = shiftData()
-                  for (; y < 144; y++) {
-                    if (rpixel != 0xFF) drawPixel(x, y, this.colors[rpixel])
-                  }
-                }
-              } while (data[0] < 0x04 || data[0] > 0xA4)
-            }
-            else if (op == 0xFE) {
-              continue
-            }
-          }
+          ctx.drawImage(drawingCanvas, 0, 0, canvas.width, canvas.height)
           unlock()
+          window.requestAnimationFrame(drawScreen)
+        }
+        window.requestAnimationFrame(drawScreen)
+
+        let drawPixel = (x, y, color) => {
+          drawingCtx.fillStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${color[3]})`
+          drawingCtx.fillRect(x, y, 1, 1)
+        }
+
+        let receiveBitmap = event => {
+          event.data.arrayBuffer().then(async buf => {
+            const unlock = await this.drawingCanvasLock.lock()
+            let data = new Uint8Array(buf)
+            let shiftData = () => {
+              let r = data[0]
+              data = data.subarray(1)
+              return r
+            }
+            const difMode = shiftData() == 0xFB
+            if (!difMode) {
+              drawingCtx.clearRect(0, 0, canvas.width, canvas.height)
+            }
+            let x = 0
+            let y = 0
+            while (data.length > 0) {
+              const op = shiftData()
+              if (op > 0x03 && op < 0xA5) {
+                //vertical line index
+                x = op - 4
+                y = 0
+              } else if (op == 0xF0) {
+                do {
+                  let pixel = shiftData()
+                  if (pixel != 0xFF) drawPixel(x, y, this.colors[pixel])
+                  y++
+                } while (data[0] < 0x04 || data[0] == 0xFF)
+              } else if (op == 0xF1) {
+                do {
+                  let pixel = shiftData()
+                  if (pixel < 0x04) {
+                    drawPixel(x, y, this.colors[pixel])
+                    y++
+                  } else if (pixel == 0xFF) {
+                    y++
+                  } else if (pixel == 0xF2) {
+                    //repeat byte XX times
+                    let rcount = shiftData()
+                    let rpixel = shiftData()
+                    for (let i = 0; i <= rcount; i++) {
+                      if (rpixel != 0xFF) drawPixel(x, y, this.colors[rpixel])
+                      y++
+                    }
+                  } else if (pixel > 0xD0 && pixel < 0xE0) {
+                    //repeat byte X times
+                    let rcount = pixel - 0xD0
+                    let rpixel = shiftData()
+                    for (let i = 0; i <= rcount; i++) {
+                      if (rpixel != 0xFF) drawPixel(x, y, this.colors[rpixel])
+                      y++
+                    }
+                  } else if (pixel == 0xFD) {
+                    let rpixel = shiftData()
+                    for (; y < 144; y++) {
+                      if (rpixel != 0xFF) drawPixel(x, y, this.colors[rpixel])
+                    }
+                  }
+                } while (data[0] < 0x04 || data[0] > 0xA4)
+              } else if (op == 0xFE) {
+                continue
+              }
+            }
+            unlock()
+          })
+        }
+
+        this.wsConn.onmessage = receiveBitmap
+
+        window.addEventListener("keydown", this.pressKey.bind(this))
+        window.addEventListener("keyup", this.releaseKey.bind(this))
+        canvas.width = originalWidth;
+        canvas.height = originalHeight;
+
+        this.wsConn.addEventListener("open", event => {
+          let clearBit = (byte, bit) => {
+            return byte & ~(1 << bit);
+          }
+          window.setInterval(async () => {
+            let input = 0xFF
+            const unlock = await this.inputLock.lock()
+            for (const [key, val] of Object.entries(this.pressedKeys)) {
+              if (val === true) {
+                if (key > 3 || (this.dpadPointerDown || this.dpadKeyDown)) input = clearBit(input, key)
+              }
+            }
+            unlock()
+            if (input != 0xFF || input != this.lastInput) {
+              let buf = new ArrayBuffer(1)
+              const v = new DataView(buf)
+              v.setUint8(0, input)
+              this.wsConn.send(buf)
+            }
+            this.lastInput = input
+          }, 100)
         })
       }
-
-      this.wsConn.onmessage = receiveBitmap
-
-      window.addEventListener("keydown", this.pressKey.bind(this))
-      window.addEventListener("keyup", this.releaseKey.bind(this))
-      canvas.width = originalWidth;
-      canvas.height = originalHeight;
-
-      this.wsConn.addEventListener("open", event => {
-        let clearBit = (byte, bit) => {
-          return byte & ~(1 << bit);
+      else {
+        // WebAssembly.instantiateStreaming is not currently available in Safari
+        if (WebAssembly && !WebAssembly.instantiateStreaming) { // polyfill
+          WebAssembly.instantiateStreaming = async (resp, importObject) => {
+            const source = await (await resp).arrayBuffer();
+            return await WebAssembly.instantiate(source, importObject);
+          };
         }
-        window.setInterval(async () => {
-          let input = 0xFF
-          const unlock = await this.inputLock.lock()
-          for (const [key, val] of Object.entries(this.pressedKeys)) {
-            if (val === true) {
-              if (key > 3 || (this.dpadPointerDown || this.dpadKeyDown)) input = clearBit(input, key)
-            }
-          }
-          unlock()
-          if (input != 0xFF || input != this.lastInput) {
-            let buf = new ArrayBuffer(1)
-            const v = new DataView(buf)
-            v.setUint8(0, input)
-            this.wsConn.send(buf)
-          }
-          this.lastInput = input
-        }, 100)
-      })
+
+        const go = new Go();
+        WebAssembly.instantiateStreaming(fetch("static/main.wasm"), go.importObject).then((result) => {
+          go.run(result.instance);
+        });
+      }
 
       let preventZoom = function (e) {
         var t2 = e.timeStamp;
