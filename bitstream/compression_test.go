@@ -10,7 +10,6 @@ import (
 func TestDifCompression(t *testing.T) {
 	//Generate 160,144 array of random numbers between 0 and 3
 	screen1 := generateRandomScreen()
-	screen2 := generateRandomScreen()
 	emptyScreen := [160][144]byte{}
 
 	mockServer := Server{}
@@ -25,12 +24,19 @@ func TestDifCompression(t *testing.T) {
 		t.Errorf("Failed to validate bitmap (empty -> random)")
 	}
 
-	mockServer.pixels = &screen2
+	var newScreen [160][144]byte
+	for i := 0; i < 1000; i++ {
+		oldScreen := newScreen
+		newScreen = generateRandomScreen()
 
-	bitmap2, orbitmap2 := mockServer.GetBitmapDelta(screen1)
+		mockServer.pixels = &newScreen
 
-	if !validateDif(flattenBitmap(bitmap2), screen1, orbitmap2) {
-		t.Errorf("Failed to validate bitmap (random -> random)")
+		newBitmap, newOrbitmap := mockServer.GetBitmapDelta(oldScreen)
+
+		if !validateDif(flattenBitmap(newBitmap), oldScreen, newOrbitmap) {
+			t.Errorf("Failed to validate bitmap (random -> random)")
+			t.Fail()
+		}
 	}
 }
 
@@ -64,7 +70,8 @@ func validateDif(difbmp []byte, lastBitmap, orbitmap [160][144]byte) bool {
 	}
 	data := difbmp
 	var b byte
-	if b, data = shift(data); b != 0xFB {
+	b, data = shift(data)
+	if b != 0xFB {
 		return false
 	}
 	x := 0
@@ -76,11 +83,12 @@ func validateDif(difbmp []byte, lastBitmap, orbitmap [160][144]byte) bool {
 			x = int(op - 4)
 			y = 0
 		} else if op == 0xF0 {
-			for data[0] < 0x04 || data[0] == 0xFF {
+			for len(data) > 0 && (data[0] < 0x04 || data[0] == 0xFF) {
 				var pixel byte
 				pixel, data = shift(data)
 				if pixel != 0xFF {
 					lastBitmap[x][y] = pixel
+					y++
 				}
 			}
 		} else if op == 0xF1 {
@@ -179,6 +187,8 @@ func validateLine(line []byte, lastLine [160]byte, originalLine [160]byte) (bool
 	return true, nil
 }
 
+// There seems to be an issue with the F0 decoding. Some F0 lines fail validation.
+// This issue might very well be in the compression step as well
 func decompressLine(line []byte, lastLine [160]byte) [160]byte {
 	//line compression validation for debug purposes
 	shift := func(slc []byte) (byte, []byte) {
@@ -205,6 +215,7 @@ func decompressLine(line []byte, lastLine [160]byte) [160]byte {
 				if pixel != 0xFF {
 					lastLine[y] = pixel
 				}
+				y++
 			}
 		} else if op == 0xF1 {
 			for len(data) > 0 && (data[0] < 0x04 || data[0] > 0xA4) {

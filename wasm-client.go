@@ -5,7 +5,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"github.com/llgcode/draw2d/draw2dimg"
 	"github.com/markfarnan/go-canvas/canvas"
 	"image"
@@ -77,7 +76,7 @@ func updateScreen(data *[]byte) {
 	defer screenLock.Unlock()
 	screenUpdated = true
 	var b byte
-	b, data = shift(data)
+	b, data = shift(data) //Get the delta or full header
 	x := 0
 	y := 0
 	for len(*data) > 0 {
@@ -87,12 +86,13 @@ func updateScreen(data *[]byte) {
 			x = int(op - 4)
 			y = 0
 		} else if op == 0xF0 {
-			for (*data)[0] < 0x04 || (*data)[0] == 0xFF {
+			for len(*data) > 0 && ((*data)[0] < 0x04 || (*data)[0] == 0xFF) {
 				var pixel byte
 				pixel, data = shift(data)
 				if pixel != 0xFF {
 					drawPixel(pixel, x, y)
 				}
+				y++
 			}
 		} else if op == 0xF1 {
 			for len(*data) > 0 && ((*data)[0] < 0x04 || (*data)[0] > 0xA4) {
@@ -159,9 +159,9 @@ func readFromConn(ctx context.Context, c *websocket.Conn) error {
 				return err
 			}
 			if len(msg) > 0 {
-				println(fmt.Sprintf("%+v", msg))
-				return nil
-				//go updateScreen(&msg)
+				//println(fmt.Sprintf("%+v", msg))
+				//return nil
+				go updateScreen(&msg)
 			}
 		}
 
