@@ -103,13 +103,14 @@ func shiftPc(clusters []pixelCluster) (pixelCluster, []pixelCluster) {
 // 0xFE ignore line
 // 0xEE internally used to mark array elements that are to be removed
 func compressLine(origLine []byte, cl []pixelCluster) []byte {
+	if len(cl) == 0 {
+		return append([]byte{0xF0}, origLine...)
+	}
+
 	line := make([]byte, len(origLine))
 	copy(line, origLine)
 
 	var cline []byte
-	if len(cl) == 0 {
-		return append([]byte{0xF0}, line...)
-	}
 
 	cline = make([]byte, 1, len(line)/2)
 	cline[0] = 0xF1

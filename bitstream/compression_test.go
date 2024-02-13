@@ -88,8 +88,8 @@ func validateDif(difbmp []byte, lastBitmap, orbitmap [160][144]byte) bool {
 				pixel, data = shift(data)
 				if pixel != 0xFF {
 					lastBitmap[x][y] = pixel
-					y++
 				}
+				y++
 			}
 		} else if op == 0xF1 {
 			for len(data) > 0 && (data[0] < 0x04 || data[0] > 0xA4) {
