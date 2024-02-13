@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"github.com/HFO4/gbc-in-cloud/bitstream"
 	"github.com/llgcode/draw2d/draw2dimg"
 	"github.com/markfarnan/go-canvas/canvas"
 	"image"
@@ -75,77 +76,7 @@ func updateScreen(data *[]byte) {
 	screenLock.Lock()
 	defer screenLock.Unlock()
 	screenUpdated = true
-	var b byte
-	b, data = shift(data) //Get the delta or full header
-	x := 0
-	y := 0
-	for len(*data) > 0 {
-		var op byte
-		op, data = shift(data)
-		if op > 0x03 && op < 0xA5 {
-			x = int(op - 4)
-			y = 0
-		} else if op == 0xF0 {
-			for len(*data) > 0 && ((*data)[0] < 0x04 || (*data)[0] == 0xFF) {
-				var pixel byte
-				pixel, data = shift(data)
-				if pixel != 0xFF {
-					drawPixel(pixel, x, y)
-				}
-				y++
-			}
-		} else if op == 0xF1 {
-			for len(*data) > 0 && ((*data)[0] < 0x04 || (*data)[0] > 0xA4) {
-				b, data = shift(data)
-				if b < 0x04 {
-					drawPixel(b, x, y)
-					y++
-				} else if b == 0xFF {
-					y++
-				} else if b == 0xF2 {
-					var rcount byte
-					var rpx byte
-					rcount, data = shift(data)
-					rpx, data = shift(data)
-					for i := 0; i <= int(rcount); i++ {
-						if rpx != 0xFF {
-							drawPixel(rpx, x, y)
-						}
-						y++
-					}
-				} else if b > 0xD0 && b < 0xE0 {
-					var rpx byte
-					rcount := b - 0xD0
-					rpx, data = shift(data)
-					for i := 0; i <= int(rcount); i++ {
-						if rpx != 0xFF {
-							drawPixel(rpx, x, y)
-						}
-						y++
-					}
-				} else if b == 0xFD {
-					var rpx byte
-					rpx, data = shift(data)
-					for ; y < 144; y++ {
-						if rpx != 0xFF {
-							drawPixel(rpx, x, y)
-						}
-					}
-				}
-			}
-		} else if op == 0xFE {
-			continue
-		}
-	}
-}
-
-func shift(slc *[]byte) (byte, *[]byte) {
-	var r []byte
-	if len(*slc) == 1 {
-		return (*slc)[0], &r
-	}
-	r = (*slc)[1:]
-	return (*slc)[0], &r
+	bitstream.DecompressLine(data, drawPixel)
 }
 
 func readFromConn(ctx context.Context, c *websocket.Conn) error {

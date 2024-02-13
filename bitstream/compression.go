@@ -13,7 +13,7 @@ func (s *Server) GetBitmap() ([][]byte, [160][144]byte) {
 	var compressedBitmap [][]byte
 	for linenum, line := range screen {
 		lineClusters := getLineClusters(line[:])
-		compressedLine := compressLine(line[:], lineClusters)
+		compressedLine := CompressLine(line[:], lineClusters)
 		compressedBitmap = append(compressedBitmap, append([]byte{byte(linenum) + 0x04}, compressedLine...))
 	}
 	return compressedBitmap, screen
@@ -41,7 +41,7 @@ func (s *Server) GetBitmapDelta(lastBitmap [160][144]byte) ([][]byte, [160][144]
 		}
 		//clustering
 		clusters := getLineClusters(deltaLine)
-		compressedDeltaLine = append(compressedDeltaLine, compressLine(deltaLine, clusters)...)
+		compressedDeltaLine = append(compressedDeltaLine, CompressLine(deltaLine, clusters)...)
 
 		deltaScreen = append(deltaScreen, compressedDeltaLine)
 	}
@@ -86,7 +86,7 @@ func getLineClusters(line []byte) []pixelCluster {
 	return clusters
 }
 
-func shiftPc(clusters []pixelCluster) (pixelCluster, []pixelCluster) {
+func shiftPixelCluster(clusters []pixelCluster) (pixelCluster, []pixelCluster) {
 	c := clusters[0]
 	return c, clusters[1:]
 }
@@ -102,7 +102,7 @@ func shiftPc(clusters []pixelCluster) (pixelCluster, []pixelCluster) {
 // 0xFD repeat until end of line
 // 0xFE ignore line
 // 0xEE internally used to mark array elements that are to be removed
-func compressLine(origLine []byte, cl []pixelCluster) []byte {
+func CompressLine(origLine []byte, cl []pixelCluster) []byte {
 	if len(cl) == 0 {
 		return append([]byte{0xF0}, origLine...)
 	}
@@ -122,7 +122,7 @@ func compressLine(origLine []byte, cl []pixelCluster) []byte {
 		return append([]byte{0xF0}, line...)
 	}
 	for len(clusters) > 0 {
-		cluster, clusters = shiftPc(clusters)
+		cluster, clusters = shiftPixelCluster(clusters)
 		i := cluster.repetitionIndex
 		clusterEnd := i + cluster.repetitionCount
 		if clusterEnd >= 143 {
@@ -149,4 +149,78 @@ func compressLine(origLine []byte, cl []pixelCluster) []byte {
 	}
 
 	return cline
+}
+
+func DecompressLine(data *[]byte, drawFunc func(pixel byte, x, y int)) {
+	var b byte
+	b, data = shiftByte(data)
+	x := 0
+	y := 0
+	for len(*data) > 0 {
+		var op byte
+		op, data = shiftByte(data)
+		if op > 0x03 && op < 0xA5 {
+			x = int(op - 4)
+			y = 0
+		} else if op == 0xF0 {
+			for len(*data) > 0 && ((*data)[0] < 0x04 || (*data)[0] == 0xFF) {
+				var pixel byte
+				pixel, data = shiftByte(data)
+				if pixel != 0xFF {
+					drawFunc(pixel, x, y)
+				}
+				y++
+			}
+		} else if op == 0xF1 {
+			for len(*data) > 0 && ((*data)[0] < 0x04 || (*data)[0] > 0xA4) {
+				b, data = shiftByte(data)
+				if b < 0x04 {
+					drawFunc(b, x, y)
+					y++
+				} else if b == 0xFF {
+					y++
+				} else if b == 0xF2 {
+					var rcount byte
+					var rpx byte
+					rcount, data = shiftByte(data)
+					rpx, data = shiftByte(data)
+					for i := 0; i <= int(rcount); i++ {
+						if rpx != 0xFF {
+							drawFunc(rpx, x, y)
+						}
+						y++
+					}
+				} else if b > 0xD0 && b < 0xE0 {
+					var rpx byte
+					rcount := b - 0xD0
+					rpx, data = shiftByte(data)
+					for i := 0; i <= int(rcount); i++ {
+						if rpx != 0xFF {
+							drawFunc(rpx, x, y)
+						}
+						y++
+					}
+				} else if b == 0xFD {
+					var rpx byte
+					rpx, data = shiftByte(data)
+					for ; y < 144; y++ {
+						if rpx != 0xFF {
+							drawFunc(rpx, x, y)
+						}
+					}
+				}
+			}
+		} else if op == 0xFE {
+			continue
+		}
+	}
+}
+
+func shiftByte(slc *[]byte) (byte, *[]byte) {
+	var r []byte
+	if len(*slc) == 1 {
+		return (*slc)[0], &r
+	}
+	r = (*slc)[1:]
+	return (*slc)[0], &r
 }
