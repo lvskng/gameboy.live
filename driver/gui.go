@@ -1,4 +1,5 @@
 //go:build gui
+// +build gui
 
 package driver
 
@@ -8,8 +9,8 @@ import (
 	"os"
 
 	"github.com/HFO4/gbc-in-cloud/util"
-	"github.com/faiface/pixel"
-	"github.com/faiface/pixel/pixelgl"
+	"github.com/gopxl/pixel"
+	"github.com/gopxl/pixel/pixelgl"
 )
 
 type LCD struct {

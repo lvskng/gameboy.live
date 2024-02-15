@@ -2,9 +2,9 @@ package gb
 
 import (
 	"github.com/HFO4/gbc-in-cloud/util"
-	"github.com/faiface/beep"
-	"github.com/faiface/beep/effects"
-	"github.com/faiface/beep/speaker"
+	"github.com/gopxl/beep"
+	"github.com/gopxl/beep/effects"
+	"github.com/gopxl/beep/speaker"
 	"log"
 	"math"
 	"math/rand"
@@ -71,11 +71,12 @@ type Channel struct {
 }
 
 /*
-	Wave Duty:
-	  00: 12.5% ( _-------_-------_------- )
-	  01: 25%   ( __------__------__------ )
-	  10: 50%   ( ____----____----____---- ) (normal)
-	  11: 75%   ( ______--______--______-- )
+Wave Duty:
+
+	00: 12.5% ( _-------_-------_------- )
+	01: 25%   ( __------__------__------ )
+	10: 50%   ( ____----____----____---- ) (normal)
+	11: 75%   ( ______--______--______-- )
 */
 var waveDutyMap = [5]float64{
 	1: -0.25,
@@ -148,8 +149,8 @@ func (sound *Sound) Play() {
 }
 
 /*
-	When sound related memory is writen, this function will be
-	called to update sound props.
+When sound related memory is writen, this function will be
+called to update sound props.
 */
 func (sound *Sound) Trigger(address uint16, val byte, vram []byte) {
 	sound.VRAMCache = vram

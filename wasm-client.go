@@ -7,12 +7,12 @@ import (
 	"context"
 	"github.com/HFO4/gbc-in-cloud/bitstream"
 	"github.com/llgcode/draw2d/draw2dimg"
-	"github.com/markfarnan/go-canvas/canvas"
 	"image"
 	"image/color"
 	"nhooyr.io/websocket"
 	"sync"
 	"syscall/js"
+	"unsafe"
 )
 
 var screen *image.RGBA
@@ -22,6 +22,7 @@ var colors [4][3]byte
 var opacity byte
 
 func main() {
+	js.Global().Set("getScreen", js.FuncOf(getScreen))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -41,18 +42,26 @@ func main() {
 	}
 	opacity = 0xFF
 
-	cvs, _ := canvas.NewCanvas2d(false)
+	//cvs, _ := canvas.NewCanvas2d(false)
 
-	doc := js.Global().Get("document")
-	emulatorScreen := doc.Call("getElementById", "emulatorScreen")
+	//doc := js.Global().Get("document")
+	//emulatorScreen := doc.Call("getElementById", "emulatorScreen")
 
 	screen = image.NewRGBA(image.Rect(0, 0, 160, 144))
 
-	cvs.Set(emulatorScreen, 160, 144)
-	cvs.Start(60, renderScreen)
+	//cvs.Set(emulatorScreen, 160, 144)
+	//cvs.Start(60, renderScreen)
 
 	go readFromConn(ctx, c)
 	select {}
+}
+
+func getScreen(this js.Value, p []js.Value) interface{} {
+	if screen != nil {
+		sz := screen.Bounds().Size()
+		return []interface{}{uintptr(unsafe.Pointer(&screen.Pix[0])), len(screen.Pix), sz.X, sz.Y}
+	}
+	return nil
 }
 
 func renderScreen(gc *draw2dimg.GraphicContext) bool {

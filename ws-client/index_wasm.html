@@ -520,14 +520,14 @@
     },
     mounted() {
       const canvas = document.getElementById("emulatorScreen")
-      this.loadSettingsFromCookie()
+      const ctx = canvas.getContext("2d")
       canvas.style.height = this.hideControls ? "100vh" : "auto"
       canvas.height = 144
       canvas.width = 160
+      this.loadSettingsFromCookie()
       if (!WebAssembly) {
         this.wsConn = new WebSocket("{{.WebSocketUrl}}")
         const drawingCanvas = document.createElement("canvas")
-        const ctx = canvas.getContext("2d")
         const drawingCtx = drawingCanvas.getContext("2d")
         let restoreConn = event => {
           setTimeout(() => {
@@ -671,9 +671,28 @@
         }
 
         const go = new Go();
+        let instance;
         WebAssembly.instantiateStreaming(fetch("static/main.wasm"), go.importObject).then((result) => {
+          instance = result.instance;
           go.run(result.instance);
         });
+        let drawScreen = async () => {
+          window.requestAnimationFrame(drawScreen)
+          if (!instance) return
+          const mem = new Uint8ClampedArray(instance.exports.mem.buffer)
+          if (!mem || mem.byteLength === 0) return
+          //const unlock = await this.drawingCanvasLock.lock()
+          let vals = getScreen()
+          if (!vals) return
+          let [ptr, len, width, height] = vals
+          const bytes = mem.subarray(ptr, ptr + len)
+          console.log(bytes)
+          console.log(bytes.length)
+          const data = new ImageData(bytes, width, height)
+          ctx.putImageData(data, 0, 0)
+          //unlock()
+        }
+        window.requestAnimationFrame(drawScreen)
       }
 
       let preventZoom = function (e) {
