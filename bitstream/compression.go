@@ -116,13 +116,13 @@ func CompressLine(origLine []byte, cl []pixelCluster) []byte {
 	cline[0] = 0xF1
 
 	var cluster pixelCluster
-	clusters := cl
-	hasClusters := len(clusters) > 0
+	clusters := &cl
+	hasClusters := len(*clusters) > 0
 	if !hasClusters {
 		return append([]byte{0xF0}, line...)
 	}
-	for len(clusters) > 0 {
-		cluster, clusters = shiftPixelCluster(clusters)
+	for len(*clusters) > 0 {
+		cluster, clusters = shift(clusters)
 		i := cluster.repetitionIndex
 		clusterEnd := i + cluster.repetitionCount
 		if clusterEnd >= 143 {
@@ -151,21 +151,130 @@ func CompressLine(origLine []byte, cl []pixelCluster) []byte {
 	return cline
 }
 
-func DecompressLine(data *[]byte, drawFunc func(pixel byte, x, y int)) {
+// dataStream is a struct representing the data to be decompressed
+// It implements methods like shift() and get() for convenience
+type dataStream struct {
+	data        []byte
+	index, x, y int
+}
+
+// shift increases the current data index by 1 and returns the next element
+func (s *dataStream) shift() byte {
+	b := s.data[s.index]
+	s.index = s.index + 1
+	return b
+}
+
+// get returns the next element without increasing the index
+func (s *dataStream) get() byte {
+	return s.data[s.index]
+}
+
+func (s *dataStream) getNext() byte {
+	return s.data[s.index+1]
+}
+
+// hasNext returns true if the index is within the bounds of the data slice
+func (s *dataStream) hasNext() bool {
+	return s.index < len(s.data)
+}
+
+func (s *dataStream) xInc() int {
+	i := s.x
+	s.x++
+	return i
+}
+
+func (s *dataStream) yInc() int {
+	i := s.y
+	s.y++
+	return i
+}
+
+func Decompress(data *[]byte, drawFunc func(pixel byte, x, y int)) {
+	s := dataStream{*data, 0, 0, 0}
+	s.shift() //Remove mode identifier
+	for s.hasNext() {
+		operation := s.shift()
+		if operation > 0x03 && operation < 0xA5 {
+			s.x = int(operation - 4)
+			s.y = 0
+		} else if operation == 0xF0 {
+			drawUncompressed(&s, drawFunc)
+		} else if operation == 0xF1 {
+			drawCompressed(&s, drawFunc)
+		}
+	}
+}
+
+func drawUncompressed(s *dataStream, drawFunc func(pixel byte, x, y int)) {
+	for s.hasNext() {
+		peek := s.get()
+		if peek > 0x04 && peek < 0xA4 {
+			break
+		}
+		pixel := s.shift()
+		if pixel != 0xFF {
+			drawFunc(pixel, s.x, s.yInc())
+		}
+	}
+}
+
+func drawCompressed(s *dataStream, drawFunc func(pixel byte, x, y int)) {
+	//for next := s.getNext(); s.hasNext() && (next < 0x04 || next == 0xFF); next = s.getNext() {
+	for s.hasNext() {
+		peek := s.get()
+		if peek > 0x04 && peek < 0xA4 {
+			break
+		}
+		b := s.shift()
+		if b < 0x04 {
+			drawFunc(b, s.x, s.yInc())
+		} else if b == 0xFF {
+			s.yInc()
+		} else if b == 0xF2 {
+			repcount := s.shift()
+			pixel := s.shift()
+			drawRepeat(s, repcount, pixel, drawFunc)
+		} else if b > 0xD0 && b < 0xE0 {
+			repcount := b - 0xD0
+			pixel := s.shift()
+			drawRepeat(s, repcount, pixel, drawFunc)
+		} else if b == 0xFD {
+			repcount := 143 - s.y
+			pixel := s.shift()
+			drawRepeat(s, byte(repcount), pixel, drawFunc)
+		} else {
+			panic("help")
+		}
+	}
+}
+
+func drawRepeat(s *dataStream, repcount, pixel byte, drawFunc func(pixel byte, x, y int)) {
+	if pixel == 0xFF {
+		s.y += int(repcount + 1)
+	} else {
+		for i := 0; i <= int(repcount); i++ {
+			drawFunc(pixel, s.x, s.yInc())
+		}
+	}
+}
+
+func DecompressSimple(data *[]byte, drawFunc func(pixel byte, x, y int)) {
 	var b byte
-	b, data = shiftByte(data)
+	b, data = shift(data)
 	x := 0
 	y := 0
 	for len(*data) > 0 {
 		var op byte
-		op, data = shiftByte(data)
+		op, data = shift(data)
 		if op > 0x03 && op < 0xA5 {
 			x = int(op - 4)
 			y = 0
 		} else if op == 0xF0 {
 			for len(*data) > 0 && ((*data)[0] < 0x04 || (*data)[0] == 0xFF) {
 				var pixel byte
-				pixel, data = shiftByte(data)
+				pixel, data = shift(data)
 				if pixel != 0xFF {
 					drawFunc(pixel, x, y)
 				}
@@ -173,7 +282,7 @@ func DecompressLine(data *[]byte, drawFunc func(pixel byte, x, y int)) {
 			}
 		} else if op == 0xF1 {
 			for len(*data) > 0 && ((*data)[0] < 0x04 || (*data)[0] > 0xA4) {
-				b, data = shiftByte(data)
+				b, data = shift(data)
 				if b < 0x04 {
 					drawFunc(b, x, y)
 					y++
@@ -182,8 +291,8 @@ func DecompressLine(data *[]byte, drawFunc func(pixel byte, x, y int)) {
 				} else if b == 0xF2 {
 					var rcount byte
 					var rpx byte
-					rcount, data = shiftByte(data)
-					rpx, data = shiftByte(data)
+					rcount, data = shift(data)
+					rpx, data = shift(data)
 					for i := 0; i <= int(rcount); i++ {
 						if rpx != 0xFF {
 							drawFunc(rpx, x, y)
@@ -193,7 +302,7 @@ func DecompressLine(data *[]byte, drawFunc func(pixel byte, x, y int)) {
 				} else if b > 0xD0 && b < 0xE0 {
 					var rpx byte
 					rcount := b - 0xD0
-					rpx, data = shiftByte(data)
+					rpx, data = shift(data)
 					for i := 0; i <= int(rcount); i++ {
 						if rpx != 0xFF {
 							drawFunc(rpx, x, y)
@@ -202,7 +311,7 @@ func DecompressLine(data *[]byte, drawFunc func(pixel byte, x, y int)) {
 					}
 				} else if b == 0xFD {
 					var rpx byte
-					rpx, data = shiftByte(data)
+					rpx, data = shift(data)
 					for ; y < 144; y++ {
 						if rpx != 0xFF {
 							drawFunc(rpx, x, y)
@@ -216,8 +325,9 @@ func DecompressLine(data *[]byte, drawFunc func(pixel byte, x, y int)) {
 	}
 }
 
-func shiftByte(slc *[]byte) (byte, *[]byte) {
-	var r []byte
+// shift takes a slice and returns the first element and a pointer to the original slice with this element removed
+func shift[T any](slc *[]T) (T, *[]T) {
+	var r []T
 	if len(*slc) == 1 {
 		return (*slc)[0], &r
 	}

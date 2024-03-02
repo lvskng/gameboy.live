@@ -22,6 +22,8 @@ func TestDifCompression(t *testing.T) {
 
 	if !validateDif(flattenBitmap(bitmap1), emptyScreen, orbitmap1) {
 		t.Errorf("Failed to validate bitmap (empty -> random)")
+		t.Fail()
+		return
 	}
 
 	var newScreen [160][144]byte
@@ -66,7 +68,7 @@ func validateDif(difbmp []byte, lastBitmap, orbitmap [160][144]byte) bool {
 		lastBitmap[x][y] = pixel
 	}
 	data := difbmp
-	DecompressLine(&data, drawFunc)
+	Decompress(&data, drawFunc)
 	var pixels [][4]byte
 	var lines []int
 	var printed bool

@@ -21,19 +21,32 @@ var screenUpdated bool
 var colors [4][3]byte
 var opacity byte
 var updateFunc js.Func
+var inputChannel chan byte
+var exitChannel chan struct{}
 
+// This program is a client for the bitstream WebSocket server
+// It is meant to be used together with the client HTML and JS via WebAssembly
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	jsWindow := js.Global()
 
-	addr := js.Global().Call("getWSUrl").String()
+	//We expect the window.getWSUrl method from the JS to return a string with the WS server
+	addr := jsWindow.Call("getWSUrl").String()
 
 	c, _, err := websocket.Dial(ctx, addr, nil)
 	if err != nil {
 		panic(fmt.Sprintf("WebSocket connection to %s failed: %+v", addr, err))
 	}
-	defer c.CloseNow()
 
+	defer func() {
+		err := c.CloseNow()
+		if err != nil {
+			println(fmt.Sprintf("Error closing connection: %+v", err))
+		}
+		cancel()
+	}()
+
+	//Initialize fields
 	screenLock = sync.RWMutex{}
 	screenUpdated = false
 	colors = [4][3]byte{
@@ -43,46 +56,71 @@ func main() {
 		{0x0f, 0x38, 0x0f},
 	}
 	opacity = 0xFF
+	inputChannel = make(chan byte)
+	exitChannel = make(chan struct{})
 
 	screen = image.NewRGBA(image.Rect(0, 0, 160, 144))
 
-	updateFunc = js.FuncOf(frameUpdate)
+	//Set the screen update function via requestAnimationScreen
+	updateFunc = js.FuncOf(FrameUpdate)
+	jsWindow.Call("requestAnimationFrame", updateFunc)
 
-	js.Global().Call("requestAnimationFrame", updateFunc)
+	//Export the Exit, SetColors and UpdateInput functions to JS
+	jsWindow.Set("exitClient", js.FuncOf(Exit))
+	jsWindow.Set("setColors", js.FuncOf(SetColors))
+	jsWindow.Set("updateInput", js.FuncOf(UpdateInput))
 
 	for {
-		err := readFromConn(ctx, c)
-		println("WebSocket reading finished")
-		if err != nil {
-			println(fmt.Sprintf("WebSocket reading finished with error: %+v", err))
-			println("Attempting reconnection")
-			c, _, err = websocket.Dial(ctx, addr, nil)
-		} else {
-			break
+		select {
+		case <-exitChannel:
+			cancel()
+		default:
+			err := handleConnection(ctx, c)
+			println("WebSocket reading finished")
+			//If the handleConnection function returns an error, reattempt connection
+			if err != nil {
+				println(fmt.Sprintf("WebSocket reading finished with error: %+v", err))
+				println("Attempting reconnection")
+				c, _, err = websocket.Dial(ctx, addr, nil)
+			} else {
+				break
+			}
 		}
 	}
 }
 
-func frameUpdate(this js.Value, args []js.Value) interface{} {
+// FrameUpdate If the screen has been updated since the last rendering event,
+// lock the screen and call the JS drawing function with its pointer
+func FrameUpdate(this js.Value, args []js.Value) interface{} {
 	if screenUpdated && screen != nil {
-		sz := screen.Bounds().Size()
-		//Length of the Pix slice: 4 (3 colors + opacity) * product of X and Y image length
-		pixels := make([]uint8, 4*sz.X*sz.Y)
 		screenLock.RLock()
-		//Copy screen to new slice for JS "export"
-		copy(pixels, screen.Pix)
+		sz := screen.Bounds().Size()
+		//Calls window.drawScreen with a pointer to the screen image data
+		//Significantly faster than drawing the canvas in Go
+		js.Global().Call("drawScreen", uintptr(unsafe.Pointer(&screen.Pix[0])), len(screen.Pix), sz.X, sz.Y)
 		screenLock.RUnlock()
-
-		js.Global().Call("drawScreen", uintptr(unsafe.Pointer(&pixels[0])), len(pixels), sz.X, sz.Y)
 		screenUpdated = false
 	}
 	js.Global().Call("requestAnimationFrame", updateFunc)
 	return nil
 }
 
-// Set the drawing colors for the DMG screen
-// Function asserts 4 parameters: 3 arrays of cardinality 3 and one byte
-func setColors(this js.Value, p []js.Value) interface{} {
+// Exit the client
+func Exit(js.Value, []js.Value) interface{} {
+	exitChannel <- struct{}{}
+	return nil
+}
+
+// UpdateInput Set the input status
+// The function expects one byte as an argument, representing the input status
+func UpdateInput(this js.Value, p []js.Value) interface{} {
+	inputChannel <- byte(p[0].Int())
+	return nil
+}
+
+// SetColors Set the drawing colors for the DMG screen
+// Function asserts 4 parameters: 3 byte arrays of cardinality 3 and one byte
+func SetColors(this js.Value, p []js.Value) interface{} {
 	if len(p) == 4 {
 		var newColors [4][3]byte
 		for i, c := range p[0:3] {
@@ -97,22 +135,30 @@ func setColors(this js.Value, p []js.Value) interface{} {
 	return nil
 }
 
+// Draw a pixel to the screen
 func drawPixel(pixel byte, xPos, yPos int) {
 	screen.Set(xPos, yPos, color.RGBA{R: colors[pixel][0], G: colors[pixel][1], B: colors[pixel][2], A: opacity})
 }
 
+// Update the screen with the image data
 func updateScreen(data *[]byte) {
 	screenLock.Lock()
 	defer screenLock.Unlock()
 	screenUpdated = true
-	bitstream.DecompressLine(data, drawPixel)
+	bitstream.Decompress(data, drawPixel)
 }
 
-func readFromConn(ctx context.Context, c *websocket.Conn) error {
+// Handles WebSocket connection read and write
+func handleConnection(ctx context.Context, c *websocket.Conn) error {
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
+		case s := <-inputChannel:
+			err := c.Write(ctx, websocket.MessageBinary, []byte{s})
+			if err != nil {
+				return err
+			}
 		default:
 			_, msg, err := c.Read(ctx)
 			if err != nil {

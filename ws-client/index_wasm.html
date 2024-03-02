@@ -168,6 +168,11 @@
     };
   }
 
+  /**
+   * convenience function returning the WebSocket URL
+   * used in the WebAssembly client to get the correct URL
+   * @returns {string}
+   */
   function getWSUrl() {
     return "{{.WebSocketUrl}}"
   }
@@ -330,15 +335,27 @@
       }
     },
     methods: {
+      /**
+       * toggle the settings menu
+       * @param value {boolean} wether the menu should be open
+       */
       toggleSettings(value) {
         this.showSettings = value;
         if (!value) {
           this.saveSettingsToCookie()
         }
       },
+      /**
+       * toggles full screen view
+       * @param event
+       */
       toggleFullscreen(event) {
         document.getElementById("emulatorScreen").style.height = event.target.checked ? "100vh" : "auto"
       },
+      /**
+       * get colors as CSS strings
+       * @returns {string[]} colors as CSS strings
+       */
       getColors() {
         ret = []
         for (const color of this.colors) {
@@ -347,16 +364,24 @@
         }
         return ret
       },
+      /**
+       * replace a screen color
+       * @param index
+       * @param color {string} color as rgba CSS string
+       */
       updateColors(index, color) {
         let col = []
         color = color.substring(1) //remove #
-        for (i = 0; i < 3; i++) {
+        for (let i = 0; i < 3; i++) {
           col[i] = parseInt(`${color[0] + color[1]}`, 16)
           color = color.substring(2)
         }
         col[3] = this.opacity
         Vue.set(this.colors, index, col);
       },
+      /**
+       * Set the opacity to all colors
+       */
       updateOpacity() {
         let newColors = []
         for (const color of this.colors) {
@@ -364,19 +389,36 @@
         }
         this.colors = newColors
       },
+      /**
+       * Reset colors to default values
+       */
       resetColors() {
         this.opacity = 0xFF
         this.colors = [[0x9b, 0xbc, 0x0f, 0xff], [0x8b, 0xac, 0x0f, 0xff], [0x30, 0x62, 0x30, 0xff], [0x0f, 0x38, 0x0f, 0xff]]
       },
+      /**
+       * set new key bindings
+       * @param gbKey {number} GameBoy key number (0-7)
+       * @param oldKey {string} old key code
+       * @param newKey {string} new key code
+       */
       updateKeyBindings(gbKey, oldKey, newKey) {
         Vue.delete(this.keyboardMappings, oldKey)
         Vue.set(this.keyboardMappings, newKey, gbKey)
       },
+      /**
+       * get the GameBoy key
+       * @param scancode {number} GameBoy key number (0-7)
+       * @returns {string} GameBoy key
+       */
       getGBKeyForScancode(scancode) {
         for (const [index, key] of Object.entries(this.keys)) {
           if (key == scancode) return index
         }
       },
+      /**
+       * Reset key bindings to initial settings
+       */
       resetKeys() {
         this.keyboardMappings = {
           ArrowRight: 0,
@@ -389,30 +431,44 @@
           ShiftRight: 6
         }
       },
+      /**
+       * keypress handler
+       * @param event
+       */
       async pressKey(event) {
         event.preventDefault();
+        //"Hidden" screenshot feature
         if (event.code == "F3") {
-          var dataURL = document.getElementById("emulatorScreen").toDataURL("image/png");
-          var newTab = window.open('about:blank', 'image from canvas');
+          const dataURL = document.getElementById("emulatorScreen").toDataURL("image/png");
+          const newTab = window.open('about:blank', 'image from canvas');
           newTab.document.write("<img src='" + dataURL + "' alt='from canvas'/>");
           return;
         }
+        //Set the pressed key as pressed
         let key = this.keyboardMappings[event.code]
-        if (key != undefined) {
+        if (key !== undefined) {
           const unlock = await this.inputLock.lock()
           this.pressedKeys[key] = true
           if (key < 4) this.dpadKeyDown = true
           unlock()
         }
       },
+      /**
+       * release key handler
+       * @param event
+       */
       async releaseKey(event) {
         let key = this.keyboardMappings[event.code]
-        if (key != undefined) {
+        if (key !== undefined) {
           const unlock = await this.inputLock.lock()
           this.pressedKeys[key] = false
           unlock()
         }
       },
+      /**
+       * D-Pad handler for touch devices
+       * @param event
+       */
       handleDpadTouchStart(event) {
         event.preventDefault();
         let elem = document.elementFromPoint(event.clientX, event.clientY)
@@ -421,12 +477,17 @@
         }
         this.dpadPointerDown = true
         let id = elem.id
+        //If the pointer is not on a dpad button do nothing
         if (![...elem.classList].includes("dpad_btn")) return
         let dir = this.getDpadButtonFromId(id)
-        if (dir != undefined) {
+        if (dir !== undefined) {
           this.setDpad(this.keys[dir])
         }
       },
+      /**
+       * D-Pad move handler for touch devices
+       * @param event
+       */
       handleDpadTouchMove(event) {
         event.preventDefault()
         let elem = document.elementFromPoint(event.clientX, event.clientY)
@@ -440,16 +501,24 @@
         if (!elem) {
           this.setDpad(4)
         }
-
-        if (dir != undefined) {
+        if (dir !== undefined) {
           this.setDpad(this.keys[dir])
         }
       },
+      /**
+       * D-Pad release handler
+       * @param event
+       */
       handleDpadTouchEnd(event) {
         event.preventDefault()
         this.dpadPointerDown = false
         this.setDpad(4)
       },
+      /**
+       * get formatted D-Pad button name
+       * @param id {string}
+       * @returns {string}
+       */
       getDpadButtonFromId(id) {
         switch (id) {
           case "dpad_up":
@@ -462,6 +531,10 @@
             return "RIGHT"
         }
       },
+      /**
+       * button touch handler
+       * @param event
+       */
       handleButtonTouchBegin(event) {
         event.preventDefault();
         let elem = document.elementFromPoint(event.clientX, event.clientY)
@@ -469,6 +542,10 @@
         this.currentBtnPress = id.replace("btn-", '').toUpperCase()
         this.pressedKeys[this.keys[id.replace("btn-", '').toUpperCase()]] = true
       },
+      /**
+       * button release handler
+       * @param event
+       */
       handleButtonTouchEnd(event) {
         event.preventDefault()
         this.currentBtnPress = ''
@@ -476,14 +553,20 @@
         let id = elem.id
         this.pressedKeys[this.keys[id.replace("btn-", '').toUpperCase()]] = false
       },
+      /**
+       * Set D-Pad direction
+       * @param dir {number}
+       */
       setDpad(dir) {
         for (const key of Object.keys(this.pressedKeys)) {
           if (key < 4) {
-            if (key == dir) this.pressedKeys[key] = true
-            else this.pressedKeys[key] = false
+            this.pressedKeys[key] = key == dir;
           } else break
         }
       },
+      /**
+       * save all settings from the menu as a cookie
+       */
       saveSettingsToCookie() {
         const settings = {
           hideControls: this.hideControls,
@@ -497,7 +580,9 @@
         const expires = "expires=" + d.toUTCString();
         document.cookie = "gameSettings=" + settingsString + ";" + expires + ";path=/";
       },
-
+      /**
+       * load all settings from the cookie
+       */
       loadSettingsFromCookie() {
         const name = "gameSettings=";
         const decodedCookie = decodeURIComponent(document.cookie);
@@ -519,20 +604,28 @@
         }
       },
     },
-    created() {
-
-    },
     mounted() {
+      //Initialize canvas
       const canvas = document.getElementById("emulatorScreen")
       const ctx = canvas.getContext("2d")
       canvas.style.height = this.hideControls ? "100vh" : "auto"
       canvas.height = 144
       canvas.width = 160
+
       this.loadSettingsFromCookie()
+
+      //If WebAssembly is available in the browser, load main.wasm
       if (!WebAssembly) {
+        //GameBoy's screen size
+        const originalWidth = 160
+        const originalHeight = 144
+
+        //Initialize JS rendering methods and WebSocket connection
         this.wsConn = new WebSocket("{{.WebSocketUrl}}")
         const drawingCanvas = document.createElement("canvas")
         const drawingCtx = drawingCanvas.getContext("2d")
+
+        //Restore connection on close (in case the connection fails)
         let restoreConn = event => {
           setTimeout(() => {
             if (document.hasFocus && !this.wsConn || this.wsConn.readyState == 3) {
@@ -542,20 +635,21 @@
             }
           }, "3000");
         }
-
         this.wsConn.onclose = restoreConn
 
+        //If the connection was lost while the page is in the background, it should only be restored on refocussing
         document.onfocus = () => {
           if (this.wsConn.readyState != WebSocket.OPEN) {
             restoreConn()
           }
         }
 
-        const originalWidth = 160
-        const originalHeight = 144
+        //Set up drawing canvas
         drawingCanvas.width = originalWidth
         drawingCanvas.height = originalHeight
 
+        //Set up the drawing function
+        //This function will draw the buffer image to the visible canvas every animationFrame
         let drawScreen = async () => {
           const unlock = await this.drawingCanvasLock.lock()
           ctx.drawImage(drawingCanvas, 0, 0, canvas.width, canvas.height)
@@ -564,88 +658,115 @@
         }
         window.requestAnimationFrame(drawScreen)
 
+        //Helper function to draw a pixel to the buffer canvas
         let drawPixel = (x, y, color) => {
           drawingCtx.fillStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${color[3]})`
           drawingCtx.fillRect(x, y, 1, 1)
         }
 
+        //This function handles receiving the image data from the WebSocket and decoding it
         let receiveBitmap = event => {
+          //Create an array buffer from the data
           event.data.arrayBuffer().then(async buf => {
             const unlock = await this.drawingCanvasLock.lock()
             let data = new Uint8Array(buf)
+            //Helper function performing a "shift" on the data array
             let shiftData = () => {
               let r = data[0]
               data = data.subarray(1)
               return r
             }
+            //Shift the mode identifier
             const difMode = shiftData() == 0xFB
+            //Clear the canvas if a full image is received
             if (!difMode) {
               drawingCtx.clearRect(0, 0, canvas.width, canvas.height)
             }
+            //Initialize image coordinates
             let x = 0
             let y = 0
+            //Decoding loop
             while (data.length > 0) {
+              //Get the operation:
+              //Set x coordinate, non-compressed line or compressed line
               const op = shiftData()
+              //Set line index
               if (op > 0x03 && op < 0xA5) {
                 //vertical line index
                 x = op - 4
                 y = 0
-              } else if (op == 0xF0) {
+              } else if (op == 0xF0) { //Uncompressed line
                 do {
                   let pixel = shiftData()
                   if (pixel != 0xFF) drawPixel(x, y, this.colors[pixel])
                   y++
-                } while (data[0] < 0x04 || data[0] == 0xFF)
-              } else if (op == 0xF1) {
+                } while (data[0] < 0x04 || data[0] == 0xFF) //Break loop if lookahead is not a pixel
+              } else if (op == 0xF1) { //Compressed line
                 do {
                   let pixel = shiftData()
                   if (pixel < 0x04) {
                     drawPixel(x, y, this.colors[pixel])
                     y++
-                  } else if (pixel == 0xFF) {
+                  } else if (pixel == 0xFF) { //Don't draw pixel
                     y++
-                  } else if (pixel == 0xF2) {
-                    //repeat byte XX times
+                  } else if (pixel == 0xF2) { //Repeat byte XX times
                     let rcount = shiftData()
                     let rpixel = shiftData()
-                    for (let i = 0; i <= rcount; i++) {
-                      if (rpixel != 0xFF) drawPixel(x, y, this.colors[rpixel])
-                      y++
+                    if (rpixel == 0xFF) {
+                      y += rcount
+                    } else { //If the pixel is 0xFF (ignore), simply add the repetition count to the y index
+                      for (let i = 0; i <= rcount; i++) {
+                        drawPixel(x, y, this.colors[rpixel])
+                        y++
+                      } //Repeatedely draw the pixel
                     }
                   } else if (pixel > 0xD0 && pixel < 0xE0) {
                     //repeat byte X times
                     let rcount = pixel - 0xD0
                     let rpixel = shiftData()
-                    for (let i = 0; i <= rcount; i++) {
-                      if (rpixel != 0xFF) drawPixel(x, y, this.colors[rpixel])
-                      y++
+                    if (rpixel == 0xFF) {
+                      y += rcount
+                    } else {
+                      for (let i = 0; i <= rcount; i++) {
+                        drawPixel(x, y, this.colors[rpixel])
+                        y++
+                      }
                     }
                   } else if (pixel == 0xFD) {
                     let rpixel = shiftData()
-                    for (; y < 144; y++) {
-                      if (rpixel != 0xFF) drawPixel(x, y, this.colors[rpixel])
+                    if (rpixel != 0xFF) {
+                      for (; y < 144; y++) {
+                        drawPixel(x, y, this.colors[rpixel])
+                      }
                     }
                   }
                 } while (data[0] < 0x04 || data[0] > 0xA4)
-              } else if (op == 0xFE) {
-                continue
+              } else if (op == 0xFE) { //If ignore line
+                continue //Unnecessary continue, here for completeness sake
               }
             }
             unlock()
           })
         }
 
+        //Set the decoding function as WebSocket message handler
         this.wsConn.onmessage = receiveBitmap
 
+        //Listen to keyboard events
         window.addEventListener("keydown", this.pressKey.bind(this))
         window.addEventListener("keyup", this.releaseKey.bind(this))
+
+        //Set the canvas image bounds
         canvas.width = originalWidth;
         canvas.height = originalHeight;
 
+        //When the connection opens, send the input status periodically
         this.wsConn.addEventListener("open", event => {
+          //Helper function to clear a bit
           let clearBit = (byte, bit) => {
             return byte & ~(1 << bit);
           }
+          //Send input to server, if it is different from last or not all released (0xFF)
           window.setInterval(async () => {
             let input = 0xFF
             const unlock = await this.inputLock.lock()
@@ -665,7 +786,7 @@
           }, 100)
         })
       }
-      else {
+      else { //Load the WebAssembly based client
         // WebAssembly.instantiateStreaming is not currently available in Safari
         if (WebAssembly && !WebAssembly.instantiateStreaming) { // polyfill
           WebAssembly.instantiateStreaming = async (resp, importObject) => {
@@ -674,12 +795,22 @@
           };
         }
 
+        /**
+         * Drawing function called from the Go WebAssembly instance
+         * @param ptr pointer to the image data
+         * @param len length of the array
+         * @param xSize
+         * @param ySize
+         */
         window.drawScreen = (ptr, len, xSize, ySize) => {
-          if (!instance) return
+          //Create buffer from the wasm instance memory
           const mem = new Uint8ClampedArray(instance.exports.mem.buffer)
           if (!mem || mem.byteLength === 0) return
+          //Make a subarray from the image data
           const bytes = mem.subarray(ptr, ptr + len)
+          //Create image data from buffer
           const data = new ImageData(bytes, xSize, ySize)
+          //Draw image data to the canvas
           ctx.putImageData(data, 0, 0)
         }
 
@@ -691,6 +822,11 @@
         });
       }
 
+      /**
+       * prevent zooming on the page
+       * necessary so button touches on touch devices don't lead to a double tap zoom
+       * @param e
+       */
       let preventZoom = function (e) {
         var t2 = e.timeStamp;
         var t1 = e.currentTarget.dataset.lastTouch || t2;
@@ -704,6 +840,7 @@
         e.target.click();
       }
 
+      //Add the preventZoom function as handler for every on screen control
       Object.entries(document.getElementsByClassName("onScreenInput")).forEach(arr => {
         let btn = arr[1]
         btn.addEventListener('touchstart', preventZoom)
