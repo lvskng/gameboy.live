@@ -8,6 +8,12 @@ import (
 	"github.com/HFO4/gbc-in-cloud/util"
 )
 
+type Sound interface {
+	Init()
+	Play()
+	Trigger(address uint16, val byte, vram []byte)
+}
+
 type Core struct {
 	Cartridge Cartridge
 	CPU       CPU

@@ -1,3 +1,6 @@
+//go:build !bitstream
+// +build !bitstream
+
 package gb
 
 import (
@@ -11,7 +14,7 @@ import (
 	"time"
 )
 
-type Sound struct {
+type BeepSound struct {
 	Channel4 Channel
 	Channel3 Channel
 	Channel2 Channel
@@ -28,7 +31,7 @@ type Sound struct {
 
 type Channel struct {
 	self   *Channel
-	parent *Sound
+	parent *BeepSound
 
 	enable bool
 
@@ -98,8 +101,8 @@ var sweepTime = [8]float64{
 
 const secondPerTick = 1 / 44100.0
 
-func (sound *Sound) Init() {
-	log.Println("[Sound] Initialize Sound process unit")
+func (sound *BeepSound) Init() {
+	log.Println("[BeepSound] Initialize BeepSound process unit")
 	sound.enable = true
 	sound.Channel2.enable = false
 	sound.Channel2.self = &sound.Channel2
@@ -122,7 +125,7 @@ func (sound *Sound) Init() {
 	sound.Play()
 }
 
-func (sound *Sound) Play() {
+func (sound *BeepSound) Play() {
 	sr := beep.SampleRate(44100)
 	err := speaker.Init(sr, sr.N(time.Second/30))
 	if err != nil {
@@ -152,9 +155,9 @@ func (sound *Sound) Play() {
 When sound related memory is writen, this function will be
 called to update sound props.
 */
-func (sound *Sound) Trigger(address uint16, val byte, vram []byte) {
+func (sound *BeepSound) Trigger(address uint16, val byte, vram []byte) {
 	sound.VRAMCache = vram
-	//log.Printf("new Sound:%X : %X tick:%d\n", address, val,sound.Channel2.sampleTick)
+	//log.Printf("new BeepSound:%X : %X tick:%d\n", address, val,sound.Channel2.sampleTick)
 	if address >= 0xFF30 {
 		count := 0
 		for i := 0; i < 0xF; i++ {
@@ -166,17 +169,17 @@ func (sound *Sound) Trigger(address uint16, val byte, vram []byte) {
 	switch address {
 	case 0xFF26:
 		/*
-			FF26 - NR52 - Sound on/off
+			FF26 - NR52 - BeepSound on/off
 			  Bit 7 - All sound on/off  (0: stop all sound circuits) (Read/Write)
-			  Bit 3 - Sound 4 ON flag (Read Only)
-			  Bit 2 - Sound 3 ON flag (Read Only)
-			  Bit 1 - Sound 2 ON flag (Read Only)
-			  Bit 0 - Sound 1 ON flag (Read Only)
+			  Bit 3 - BeepSound 4 ON flag (Read Only)
+			  Bit 2 - BeepSound 3 ON flag (Read Only)
+			  Bit 1 - BeepSound 2 ON flag (Read Only)
+			  Bit 0 - BeepSound 1 ON flag (Read Only)
 		*/
 		sound.enable = util.TestBit(val, 7)
 	case 0xFF25:
 		/*
-			FF25 - NR51 - Selection of Sound output terminal (R/W)
+			FF25 - NR51 - Selection of BeepSound output terminal (R/W)
 			  Bit 7 - Output sound 4 to SO2 terminal
 			  Bit 6 - Output sound 3 to SO2 terminal
 			  Bit 5 - Output sound 2 to SO2 terminal
@@ -245,7 +248,7 @@ func (sound *Sound) Trigger(address uint16, val byte, vram []byte) {
 	case 0xFF19:
 		/*
 			FF19 - NR24 - Channel 2 Frequency hi data (R/W)
-			  Bit 7   - Initial (1=Restart Sound)     (Write Only)
+			  Bit 7   - Initial (1=Restart BeepSound)     (Write Only)
 			  Bit 6   - Counter/consecutive selection (Read/Write)
 						(1=Stop output when length in NR21 expires)
 			  Bit 2-0 - Frequency's higher 3 bits (x) (Write Only)
@@ -282,8 +285,8 @@ func (sound *Sound) Trigger(address uint16, val byte, vram []byte) {
 	//Channel 3
 	case 0xFF1A:
 		/*
-			FF1A - NR30 - Channel 3 Sound on/off (R/W)
-			  Bit 7 - Sound Channel 3 Off  (0=Stop, 1=Playback)  (Read/Write)
+			FF1A - NR30 - Channel 3 BeepSound on/off (R/W)
+			  Bit 7 - BeepSound Channel 3 Off  (0=Stop, 1=Playback)  (Read/Write)
 		*/
 		if util.TestBit(val, 7) {
 			sound.Channel3.enable = true

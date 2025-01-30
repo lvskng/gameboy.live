@@ -15,9 +15,23 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/HFO4/gbc-in-cloud/gb"
+	"github.com/coder/websocket"
 	"github.com/google/uuid"
-	"nhooyr.io/websocket"
 )
+
+type BitstreamSound struct{}
+
+func (b BitstreamSound) Init() {
+	return
+}
+
+func (b BitstreamSound) Play() {
+	return
+}
+
+func (b BitstreamSound) Trigger(address uint16, val byte, vram []byte) {
+	return
+}
 
 type Server struct {
 	Core *gb.Core
@@ -77,6 +91,7 @@ type Connection struct {
 	l         *sync.Mutex
 	m         chan []byte
 	closeSlow func()
+	close     func()
 	closed    *bool
 }
 
@@ -98,6 +113,7 @@ func (s *Server) InitServer() {
 		ToggleSound:   false,
 		UseRGB:        false,
 		PauseSignal:   make(chan bool),
+		Sound:         BitstreamSound{},
 	}
 	s.Core = core
 	s.drawSignal = core.DrawSignal
@@ -161,7 +177,24 @@ func (s *Server) InitServer() {
 	if err != nil {
 		log.Fatalf("Error creating webserver: %+v", err)
 	}
-	select {}
+	//ticker := time.NewTicker(10 * time.Minute)
+	//for {
+	//	select {
+	//	case <-ticker.C:
+	//		log.Printf("[Bitstream] Starting closed connection garbage collector")
+	//		s.connectionsLock.Lock()
+	//		s.inputLock.Lock()
+	//		for id, conn := range s.connections {
+	//			if *conn.closed {
+	//				log.Printf("[Bitstream] Found closed connection %s", id)
+	//				delete(s.connections, id)
+	//				delete(s.inputs, id)
+	//			}
+	//		}
+	//		s.connectionsLock.Unlock()
+	//		s.inputLock.Unlock()
+	//	}
+	//}
 }
 
 func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
@@ -207,15 +240,12 @@ func (s *Server) subscribe(ctx context.Context, w http.ResponseWriter, r *http.R
 		closeSlow: func() {
 			mu.Lock()
 			closed = true
-			if c != nil {
-				err := c.Close(websocket.StatusPolicyViolation, "connection too slow")
-				if err != nil {
-					log.Printf("[Bitstream] Error closing WebScoket connection: %+v", err)
-					return
-				}
-				mu.Unlock()
-				s.dropChannel <- id
+			err := c.Close(websocket.StatusPolicyViolation, "connection too slow")
+			if err != nil {
+				log.Printf("[Bitstream] Error closing WebScoket connection: %+v", err)
 			}
+			mu.Unlock()
+			s.dropChannel <- id
 		},
 	}
 
@@ -286,6 +316,7 @@ func (s *Server) addConnection(conn *Connection, id string) {
 	defer s.inputLock.Unlock()
 	s.connections[id] = conn
 	s.inputs[id] = 0xFF
+	log.Printf("[Bitstream] Number of connections known: %d", len(s.connections))
 }
 
 func (s *Server) Init(px *[160][144]uint8, str string) {
@@ -442,11 +473,9 @@ func (s *Server) dropConnections() {
 		log.Printf("[Bitstream] Dropping connection with ID %s", id)
 		s.connectionsLock.Lock()
 		s.inputLock.Lock()
-		conn, ok := s.connections[id]
+		_, ok := s.connections[id]
 		if !ok {
 			log.Printf("[Bitstream] Cannot drop connection with ID %s: Connection doesn't exist", id)
-		} else if *conn.closed {
-			log.Printf("[Bitstream] Cannot drop connection with ID %s: Connection already marked as closed", id)
 		} else {
 			delete(s.connections, id)
 			delete(s.inputs, id)
@@ -458,4 +487,8 @@ func (s *Server) dropConnections() {
 
 func (s *Server) NewInput([]byte) {
 	panic("implement me")
+}
+
+func (s *Server) StopServer() {
+	s.Core.PauseSignal <- true
 }
