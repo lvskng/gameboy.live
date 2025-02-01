@@ -17,11 +17,15 @@ RUN go build -o /gbdotlive/app ./main-bitstream.go
 
 RUN mkdir -p /gbdotlive/data
 RUN mv ./config.yaml /gbdotlive/data/
-RUN mv ./ws-client /gbdotlive/ws-client
-RUN GOOS=js GOARCH=wasm go build -o /gbdotlive/ws-client/static/main.wasm wasm/main.go
+
+WORKDIR /src/gameboy.live/ws-client/wasm
+RUN go get .
+RUN GOOS=js GOARCH=wasm go build -o ../static/main.wasm main.go
+
+RUN mv /src/gameboy.live/ws-client /gbdotlive/ws-client
 
 #wasm_exec.js for go 1.22
-RUN wget -P /gbdotlive/ws-client/static/ https://github.com/golang/go/blob/0cc45e7ca668b103c1055ae84402ad3f3425dd56/misc/wasm/wasm_exec.js
+RUN wget -P /gbdotlive/ws-client/static/ https://raw.githubusercontent.com/golang/go/refs/heads/release-branch.go1.22/misc/wasm/wasm_exec.js
 RUN rm -rf /gbdotlive/ws-client/static/wasm
 
 WORKDIR /gbdotlive/lib

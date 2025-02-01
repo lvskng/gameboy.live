@@ -23,6 +23,7 @@ var opacity byte
 var updateFunc js.Func
 var inputChannel chan byte
 var exitChannel chan struct{}
+var conn *websocket.Conn
 
 // This program is a client for the bitstream WebSocket server
 // It is meant to be used together with the client HTML and JS via WebAssembly
@@ -70,14 +71,18 @@ func main() {
 	jsWindow.Set("setColors", js.FuncOf(SetColors))
 	jsWindow.Set("updateInput", js.FuncOf(UpdateInput))
 
+	js.Global().Call("loadSettingsFromCookie")
+
+	conn = c
+
 	for {
 		select {
 		case <-exitChannel:
 			cancel()
 		default:
-			err := handleConnection(ctx, c)
+			err := handleRead(ctx)
 			println("WebSocket reading finished")
-			//If the handleConnection function returns an error, reattempt connection
+			//If the handleRead function returns an error, reattempt connection
 			if err != nil {
 				println(fmt.Sprintf("WebSocket reading finished with error: %+v", err))
 				println("Attempting reconnection")
@@ -114,14 +119,17 @@ func Exit(js.Value, []js.Value) interface{} {
 // UpdateInput Set the input status
 // The function expects one byte as an argument, representing the input status
 func UpdateInput(this js.Value, p []js.Value) interface{} {
-	inputChannel <- byte(p[0].Int())
+	err := conn.Write(context.Background(), websocket.MessageBinary, []byte{byte(p[0].Int())})
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
 // SetColors Set the drawing colors for the DMG screen
 // Function asserts 4 parameters: 3 byte arrays of cardinality 3 and one byte
 func SetColors(this js.Value, p []js.Value) interface{} {
-	if len(p) == 4 {
+	if len(p) == 5 {
 		var newColors [4][3]byte
 		for i, c := range p[0:3] {
 			col := [3]byte{byte(c.Index(0).Int()), byte(c.Index(1).Int()), byte(c.Index(2).Int())}
@@ -148,19 +156,14 @@ func updateScreen(data *[]byte) {
 	bitstream.Decompress(data, drawPixel)
 }
 
-// Handles WebSocket connection read and write
-func handleConnection(ctx context.Context, c *websocket.Conn) error {
+// Handles WebSocket connection read
+func handleRead(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
-		case s := <-inputChannel:
-			err := c.Write(ctx, websocket.MessageBinary, []byte{s})
-			if err != nil {
-				return err
-			}
 		default:
-			_, msg, err := c.Read(ctx)
+			_, msg, err := conn.Read(ctx)
 			if err != nil {
 				return err
 			}

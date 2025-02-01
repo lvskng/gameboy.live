@@ -220,7 +220,7 @@
           Space: 7,
           ShiftRight: 6
         },
-        lastInput: 0,
+        lastInput: 0xFF,
         lastDpadDown: 0,
         dpadKeyDown: false,
         opacity: 0xFF,
@@ -332,6 +332,25 @@
         ],
         inputLock: new Mutex(),
         drawingCanvasLock: new Mutex(),
+        useWasm: false,
+      }
+    },
+    watch: {
+      colors: function(newColors) {
+        if (!this.useWasm) return
+        let colors = []
+        for (let color of newColors) {
+          colors.push(color.slice(0, -1))
+        }
+        setColors(...colors, this.opacity)
+      },
+      opacity: function(newOpacity)  {
+        if (!this.useWasm) return
+        let colors = []
+        for (let color of this.colors) {
+          colors.push(color.slice(0, -1))
+        }
+        setColors(...colors, newOpacity)
       }
     },
     methods: {
@@ -378,6 +397,13 @@
         }
         col[3] = this.opacity
         Vue.set(this.colors, index, col);
+        // if (this.useWasm) {
+        //   let colors = []
+        //   for (let color of this.colors) {
+        //     colors.push(color.slice(0,-1))
+        //   }
+        //   setColors(...colors, this.opacity)
+        // }
       },
       /**
        * Set the opacity to all colors
@@ -395,6 +421,13 @@
       resetColors() {
         this.opacity = 0xFF
         this.colors = [[0x9b, 0xbc, 0x0f, 0xff], [0x8b, 0xac, 0x0f, 0xff], [0x30, 0x62, 0x30, 0xff], [0x0f, 0x38, 0x0f, 0xff]]
+        // if (this.useWasm) {
+        //   let colors = []
+        //   for (const color of this.colors) {
+        //     colors.push(color.slice(0,-1))
+        //   }
+        //   setColors(...colors, this.opacity)
+        // }
       },
       /**
        * set new key bindings
@@ -604,6 +637,8 @@
         }
       },
     },
+
+
     mounted() {
       //Initialize canvas
       const canvas = document.getElementById("emulatorScreen")
@@ -612,8 +647,31 @@
       canvas.height = 144
       canvas.width = 160
 
-      this.loadSettingsFromCookie()
-
+      let sendKeys = () => {
+        //Helper function to clear a bit
+        let clearBit = (byte, bit) => {
+          return byte & ~(1 << bit);
+        }
+        let input = 0xFF
+        this.inputLock.lock().then(unlock => {
+          for (const [key, val] of Object.entries(this.pressedKeys)) {
+            if (val === true) {
+              if (key > 3 || (this.dpadPointerDown || this.dpadKeyDown)) input = clearBit(input, key)
+            }
+          }
+          unlock()
+          if (input != 0xFF || input != this.lastInput) {
+            if (this.useWasm) updateInput(input)
+            else {
+              let buf = new ArrayBuffer(1)
+              const v = new DataView(buf)
+              v.setUint8(0, input)
+              this.wsConn.send(buf)
+            }
+          }
+          this.lastInput = input
+        })
+      }
       //If WebAssembly is available in the browser, load main.wasm
       if (!WebAssembly) {
         //GameBoy's screen size
@@ -762,28 +820,9 @@
 
         //When the connection opens, send the input status periodically
         this.wsConn.addEventListener("open", event => {
-          //Helper function to clear a bit
-          let clearBit = (byte, bit) => {
-            return byte & ~(1 << bit);
-          }
           //Send input to server, if it is different from last or not all released (0xFF)
-          window.setInterval(async () => {
-            let input = 0xFF
-            const unlock = await this.inputLock.lock()
-            for (const [key, val] of Object.entries(this.pressedKeys)) {
-              if (val === true) {
-                if (key > 3 || (this.dpadPointerDown || this.dpadKeyDown)) input = clearBit(input, key)
-              }
-            }
-            unlock()
-            if (input != 0xFF || input != this.lastInput) {
-              let buf = new ArrayBuffer(1)
-              const v = new DataView(buf)
-              v.setUint8(0, input)
-              this.wsConn.send(buf)
-            }
-            this.lastInput = input
-          }, 100)
+          window.setInterval(sendKeys, 100)
+          this.loadSettingsFromCookie()
         })
       }
       else { //Load the WebAssembly based client
@@ -794,7 +833,6 @@
             return await WebAssembly.instantiate(source, importObject);
           };
         }
-
         /**
          * Drawing function called from the Go WebAssembly instance
          * @param ptr pointer to the image data
@@ -819,7 +857,10 @@
         WebAssembly.instantiateStreaming(fetch("static/main.wasm"), go.importObject).then((result) => {
           instance = result.instance;
           go.run(result.instance);
+          window.setInterval(sendKeys, 100);
+          window.loadSettingsFromCookie = this.loadSettingsFromCookie.bind(this)
         });
+        this.useWasm = true;
       }
 
       /**
