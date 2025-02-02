@@ -397,13 +397,6 @@
         }
         col[3] = this.opacity
         Vue.set(this.colors, index, col);
-        // if (this.useWasm) {
-        //   let colors = []
-        //   for (let color of this.colors) {
-        //     colors.push(color.slice(0,-1))
-        //   }
-        //   setColors(...colors, this.opacity)
-        // }
       },
       /**
        * Set the opacity to all colors
@@ -421,13 +414,6 @@
       resetColors() {
         this.opacity = 0xFF
         this.colors = [[0x9b, 0xbc, 0x0f, 0xff], [0x8b, 0xac, 0x0f, 0xff], [0x30, 0x62, 0x30, 0xff], [0x0f, 0x38, 0x0f, 0xff]]
-        // if (this.useWasm) {
-        //   let colors = []
-        //   for (const color of this.colors) {
-        //     colors.push(color.slice(0,-1))
-        //   }
-        //   setColors(...colors, this.opacity)
-        // }
       },
       /**
        * set new key bindings
@@ -810,10 +796,6 @@
         //Set the decoding function as WebSocket message handler
         this.wsConn.onmessage = receiveBitmap
 
-        //Listen to keyboard events
-        window.addEventListener("keydown", this.pressKey.bind(this))
-        window.addEventListener("keyup", this.releaseKey.bind(this))
-
         //Set the canvas image bounds
         canvas.width = originalWidth;
         canvas.height = originalHeight;
@@ -840,6 +822,7 @@
          * @param xSize
          * @param ySize
          */
+        let instance;
         window.drawScreen = (ptr, len, xSize, ySize) => {
           //Create buffer from the wasm instance memory
           const mem = new Uint8ClampedArray(instance.exports.mem.buffer)
@@ -853,15 +836,20 @@
         }
 
         const go = new Go();
-        let instance;
-        WebAssembly.instantiateStreaming(fetch("static/main.wasm"), go.importObject).then((result) => {
+        WebAssembly.instantiateStreaming(fetch("static/main.wasm"), go.importObject).then(result => {
           instance = result.instance;
-          go.run(result.instance);
+          go.run(instance).then(() => {
+            location.reload()
+          })
           window.setInterval(sendKeys, 100);
           window.loadSettingsFromCookie = this.loadSettingsFromCookie.bind(this)
-        });
-        this.useWasm = true;
+        })
+        this.useWasm = true
       }
+
+      //Listen to keyboard events
+      window.addEventListener("keydown", this.pressKey.bind(this))
+      window.addEventListener("keyup", this.releaseKey.bind(this))
 
       /**
        * prevent zooming on the page

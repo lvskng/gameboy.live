@@ -1,6 +1,7 @@
 package bitstream
 
 import (
+	"fmt"
 	"log"
 	"math/rand"
 	"sync"
@@ -74,6 +75,17 @@ func validateDif(difbmp []byte, lastBitmap, orbitmap [160][144]byte) bool {
 	var printed bool
 	for i, line := range lastBitmap {
 		if line != orbitmap[i] {
+			var fIndex int
+			var lIndex int
+			for index, value := range data {
+				if int(value) == i+4 {
+					fIndex = index
+				} else if int(value) == i+5 {
+					lIndex = index
+				}
+			}
+			compressedLine := data[fIndex:lIndex]
+			fmt.Printf("compressed line: %x\n", compressedLine)
 			for index, pixel := range line {
 				if pixel != orbitmap[i][index] { //line, pos, expected, is
 					pixels = append(pixels, [4]byte{byte(i), byte(index), orbitmap[i][index], pixel})

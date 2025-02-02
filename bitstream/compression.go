@@ -216,12 +216,13 @@ func drawUncompressed(s *dataStream, drawFunc func(pixel byte, x, y int)) {
 		pixel := s.shift()
 		if pixel != 0xFF {
 			drawFunc(pixel, s.x, s.yInc())
+		} else {
+			s.yInc()
 		}
 	}
 }
 
 func drawCompressed(s *dataStream, drawFunc func(pixel byte, x, y int)) {
-	//for next := s.getNext(); s.hasNext() && (next < 0x04 || next == 0xFF); next = s.getNext() {
 	for s.hasNext() {
 		peek := s.get()
 		if peek > 0x04 && peek < 0xA4 {

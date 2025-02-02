@@ -12,6 +12,7 @@ import (
 	"image/color"
 	"sync"
 	"syscall/js"
+	"time"
 	"unsafe"
 )
 
@@ -34,13 +35,14 @@ func main() {
 	//We expect the window.getWSUrl method from the JS to return a string with the WS server
 	addr := jsWindow.Call("getWSUrl").String()
 
-	c, _, err := websocket.Dial(ctx, addr, nil)
+	var err error
+	conn, _, err = websocket.Dial(ctx, addr, nil)
 	if err != nil {
 		panic(fmt.Sprintf("WebSocket connection to %s failed: %+v", addr, err))
 	}
 
 	defer func() {
-		err := c.CloseNow()
+		err := conn.CloseNow()
 		if err != nil {
 			println(fmt.Sprintf("Error closing connection: %+v", err))
 		}
@@ -70,10 +72,9 @@ func main() {
 	jsWindow.Set("exitClient", js.FuncOf(Exit))
 	jsWindow.Set("setColors", js.FuncOf(SetColors))
 	jsWindow.Set("updateInput", js.FuncOf(UpdateInput))
+	jsWindow.Set("wasmAlive", js.FuncOf(AliveFunc))
 
 	js.Global().Call("loadSettingsFromCookie")
-
-	conn = c
 
 	for {
 		select {
@@ -81,14 +82,17 @@ func main() {
 			cancel()
 		default:
 			err := handleRead(ctx)
-			println("WebSocket reading finished")
 			//If the handleRead function returns an error, reattempt connection
-			if err != nil {
+			for err != nil {
 				println(fmt.Sprintf("WebSocket reading finished with error: %+v", err))
 				println("Attempting reconnection")
-				c, _, err = websocket.Dial(ctx, addr, nil)
-			} else {
-				break
+				ticker := time.NewTicker(time.Second)
+				for range ticker.C {
+					conn, _, err = websocket.Dial(ctx, addr, nil)
+					if err == nil {
+						break
+					}
+				}
 			}
 		}
 	}
@@ -173,4 +177,8 @@ func handleRead(ctx context.Context) error {
 		}
 
 	}
+}
+
+func AliveFunc(this js.Value, args []js.Value) interface{} {
+	return js.ValueOf(true)
 }
