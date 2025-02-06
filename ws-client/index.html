@@ -13,7 +13,7 @@
 <body scroll="no">
   <div id="app">
     <div id="emulator">
-      <canvas id="emulatorScreen" @click="toggleSettings"></canvas>
+      <canvas id="emulatorScreen" @click="toggleSettings" v-bind:style="{width: hideControls ? '' : '100%', height: hideControls ? '100vh' : 'auto'}"></canvas>
       <div id="onScreenControls" v-if="!hideControls">
         <svg xmlns="http://www.w3.org/2000/svg"
              viewBox="0 0 20.025 19.866000000000003" version="1.1" xml:space="preserve" id="dpad" class="onScreenInput"
@@ -887,8 +887,6 @@
 
   #emulatorScreen {
     display: block;
-    width: 100%;
-    height: auto;
     margin: 0;
     image-rendering: pixelated;
     aspect-ratio: 160/144;
